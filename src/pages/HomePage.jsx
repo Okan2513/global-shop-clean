@@ -4,7 +4,6 @@ import axios from "axios";
 import Hero from "../components/Hero";
 import ProductGrid from "../components/ProductGrid";
 
-// ✅ CRA uyumlu env
 const RAW_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 const API_BASE_URL = RAW_BASE_URL
@@ -15,7 +14,6 @@ console.log("ENV CHECK:", RAW_BASE_URL);
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   const fetchData = useCallback(async () => {
