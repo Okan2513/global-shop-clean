@@ -1,28 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { useState, useEffect, useCallback } from "react";
+import axios from "axios";
 
-// 🔁 Vite uyumlu env adı
-const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import Hero from "../components/Hero";
+import ProductGrid from "../components/ProductGrid";
+
+const RAW_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 const API_BASE_URL = RAW_BASE_URL
-  ? `${RAW_BASE_URL.replace(/\/$/, '')}/api`
+  ? `${RAW_BASE_URL.replace(/\/$/, "")}/api`
   : null;
 
 console.log("ENV CHECK:", RAW_BASE_URL);
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-
     if (!API_BASE_URL) {
-      console.error('VITE_API_BASE_URL tanımlı değil');
+      console.error("REACT_APP_API_BASE_URL tanımlı değil");
       setError(true);
-      setLoading(false);
       return;
     }
 
@@ -37,10 +35,8 @@ export default function HomePage() {
 
       setProducts(list);
     } catch (err) {
-      console.error('API ERROR:', err);
+      console.error("API ERROR:", err);
       setError(true);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -48,15 +44,21 @@ export default function HomePage() {
     fetchData();
   }, [fetchData]);
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>API bağlantısı yok</div>;
-
   return (
-    <div>
-      <h1>Products</h1>
-      {products.map(p => (
-        <div key={p._id || p.id}>{p.name}</div>
-      ))}
-    </div>
+    <>
+      <Hero />
+
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <h2 className="text-3xl font-bold mb-6">Popüler Ürünler</h2>
+
+        {error && (
+          <div className="text-red-500 mb-4">
+            API bağlantısı yok (Backend adresi eksik)
+          </div>
+        )}
+
+        <ProductGrid products={products} />
+      </div>
+    </>
   );
 }
