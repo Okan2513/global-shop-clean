@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-
-
-
 const RAW_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 const API_BASE_URL = RAW_BASE_URL
@@ -45,8 +42,6 @@ export default function HomePage() {
 
   return (
     <>
-      
-
       <div className="max-w-7xl mx-auto px-6 py-12">
         <h2 className="text-3xl font-bold mb-6">Popüler Ürünler</h2>
 
@@ -56,7 +51,21 @@ export default function HomePage() {
           </div>
         )}
 
-        
+        {!error && products.length === 0 && (
+          <div className="text-gray-500">Ürün bulunamadı.</div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {products.map((product) => (
+            <div
+              key={product._id || product.id}
+              className="border rounded-lg p-4 shadow-sm"
+            >
+              <h3 className="font-semibold">{product.name}</h3>
+              <p className="text-sm text-gray-500">{product.price} ₺</p>
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );
