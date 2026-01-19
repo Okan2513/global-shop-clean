@@ -9,6 +9,9 @@ const API_BASE_URL = RAW_BASE_URL
   : null;
 
 export default function HomePage() {
+  // 🔍 DEBUG: env gerçekten geliyor mu?
+  console.log("ENV CHECK:", process.env.NEXT_PUBLIC_API_BASE_URL);
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
