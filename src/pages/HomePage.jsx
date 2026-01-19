@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
-const API = process.env.REACT_APP_BACKEND_URL
-  ? `${process.env.REACT_APP_BACKEND_URL}/api`
+// 🔁 Vercel uyumlu env adı
+const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+const API_BASE_URL = RAW_BASE_URL
+  ? `${RAW_BASE_URL.replace(/\/$/, '')}/api` // sondaki / varsa sil
   : null;
 
 export default function HomePage() {
@@ -15,8 +18,8 @@ export default function HomePage() {
     setError(false);
 
     // 🔴 Backend URL yoksa API çağrısı yapma
-    if (!API) {
-      console.error('REACT_APP_BACKEND_URL tanımlı değil');
+    if (!API_BASE_URL) {
+      console.error('NEXT_PUBLIC_API_BASE_URL tanımlı değil');
       setProducts([]);
       setLoading(false);
       setError(true);
@@ -24,10 +27,16 @@ export default function HomePage() {
     }
 
     try {
-      const res = await axios.get(`${API}/products?limit=12`);
+      const res = await axios.get(`${API_BASE_URL}/products?limit=12`);
 
-      // 🔒 EN KRİTİK GÜVENLİK
-      setProducts(Array.isArray(res.data) ? res.data : []);
+      // 🔒 Backend bazen { data: [...] } dönebilir
+      const list = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.data)
+        ? res.data.data
+        : [];
+
+      setProducts(list);
     } catch (err) {
       console.error('API ERROR:', err);
       setProducts([]);
@@ -58,7 +67,7 @@ export default function HomePage() {
       {products.length === 0 && <p>No products found</p>}
 
       {products.map((p) => (
-        <div key={p.id}>{p.name}</div>
+        <div key={p.id || p._id}>{p.name}</div>
       ))}
     </div>
   );
