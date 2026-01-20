@@ -6,9 +6,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 export const ProductCard = ({ product }) => {
   const { language, t } = useLanguage();
 
-  // Fransa formatında Euro gösterimi için güncellendi
+  // Avrupa (Euro) formatı: 1.234,56 €
   const formatPrice = (price) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(language === 'tr' ? 'tr-TR' : 'fr-FR', {
       style: 'currency',
       currency: 'EUR'
     }).format(price || 0);
@@ -17,9 +17,9 @@ export const ProductCard = ({ product }) => {
   const getPlatformInfo = (platform) => {
     switch (platform?.toLowerCase()) {
       case 'aliexpress': 
-        return { name: 'AliExpress', bgColor: 'bg-red-500', textColor: 'text-white', icon: '🛒' };
+        return { name: 'AliExpress', bgColor: 'bg-[#FF4747]', textColor: 'text-white', icon: '🛒' };
       case 'temu': 
-        return { name: 'Temu', bgColor: 'bg-orange-500', textColor: 'text-white', icon: '🏪' };
+        return { name: 'Temu', bgColor: 'bg-[#FF6000]', textColor: 'text-white', icon: '🏪' };
       case 'shein': 
         return { name: 'Shein', bgColor: 'bg-black', textColor: 'text-white', icon: '👗' };
       default: 
@@ -29,7 +29,6 @@ export const ProductCard = ({ product }) => {
 
   const productName = language === 'tr' && product.name_tr ? product.name_tr : product.name;
   
-  // Fiyatları sırala ve en ucuzu bul (Hata korumalı)
   const sortedPrices = Array.isArray(product.prices) 
     ? [...product.prices].sort((a, b) => a.price - b.price) 
     : [];
@@ -39,112 +38,79 @@ export const ProductCard = ({ product }) => {
     ? sortedPrices[sortedPrices.length - 1].price - sortedPrices[0].price 
     : 0;
 
+  // Çok dilli etiketler sözlüğü
+  const labels = {
+    savings: { tr: 'Kazanç:', fr: 'Économie:', de: 'Ersparnis:', it: 'Risparmio:', es: 'Ahorro:', nl: 'Besparing:' },
+    bestPrice: { tr: 'En İyi Fiyat', fr: 'Meilleur Prix', de: 'Bester Preis', it: 'Miglior Prezzo', es: 'Mejor Precio', nl: 'Beste Prijs' },
+    compare: { tr: 'Karşılaştır', fr: 'Comparer', de: 'Vergleichen', it: 'Confronta', es: 'Comparar', nl: 'Vergelijken' }
+  };
+
   return (
     <Link 
       to={`/product/${product.id}`} 
-      className="product-card group block border rounded-xl overflow-hidden hover:shadow-xl transition-all duration-300 bg-white"
-      data-testid={`product-card-${product.id}`}
+      className="product-card group block border rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-500 bg-white"
     >
-      {/* Image Container */}
       <div className="relative aspect-square overflow-hidden bg-gray-50">
         <img
           src={product.image || 'https://via.placeholder.com/300'}
           alt={productName}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
           loading="lazy"
         />
         
-        {/* Discount Badge */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {product.discount_percent > 0 && (
-            <Badge className="bg-[#E02424] text-white text-xs font-bold px-2 py-1 shadow-md border-none">
+        {product.discount_percent > 0 && (
+          <div className="absolute top-3 left-3">
+            <Badge className="bg-red-600 text-white font-black px-2 py-1 rounded-lg">
               -{product.discount_percent}%
             </Badge>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Best Platform Badge */}
-        <div className="absolute top-2 right-2">
-          {cheapestPrice && (
-            <div className={`${getPlatformInfo(cheapestPrice.platform).bgColor} text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg shadow-md flex items-center gap-1`}>
-              <span>{getPlatformInfo(cheapestPrice.platform).icon}</span>
-              <span className="uppercase">{cheapestPrice.platform}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Price Savings Badge */}
         {priceDifference > 0 && (
-          <div className="absolute bottom-2 left-2">
-            <div className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-md flex items-center gap-1">
+          <div className="absolute bottom-3 left-3">
+            <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
               <TrendingDown className="h-3 w-3" />
-              {language === 'tr' ? 'Kazanç:' : 'Économie:'} {formatPrice(priceDifference)}
+              {labels.savings[language] || labels.savings.fr} {formatPrice(priceDifference)}
             </div>
           </div>
         )}
 
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg uppercase tracking-wider">
-            {t('compare_prices') || 'Comparer'}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+          <span className="opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0 bg-[#FB7701] text-white px-6 py-2 rounded-full text-xs font-bold shadow-xl">
+            {labels.compare[language] || labels.compare.fr}
           </span>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-3">
-        <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 mb-2 min-h-[40px] leading-snug">
+      <div className="p-4">
+        <h3 className="text-sm font-bold text-gray-800 line-clamp-2 mb-2 min-h-[40px] leading-tight group-hover:text-[#FB7701] transition-colors">
           {productName}
         </h3>
 
-        {/* Rating */}
-        <div className="flex items-center gap-1 mb-3">
-          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-          <span className="text-xs font-bold text-gray-700">{product.rating?.toFixed(1) || '0.0'}</span>
-          <span className="text-[10px] text-gray-400">({product.reviews_count?.toLocaleString() || 0})</span>
-        </div>
-
-        {/* Best Price Highlight */}
-        <div className="bg-emerald-50 rounded-xl p-3 mb-3 border border-emerald-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <Award className="h-4 w-4 text-emerald-600" />
-              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">
-                {language === 'tr' ? 'En İyi Fiyat' : 'Meilleur Prix'}
-              </span>
-            </div>
+        <div className="bg-emerald-50 rounded-xl p-3 mb-4 border border-emerald-100 flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
+              {labels.bestPrice[language] || labels.bestPrice.fr}
+            </span>
             <span className="text-xl font-black text-emerald-600">
               {formatPrice(product.best_price)}
             </span>
           </div>
+          {cheapestPrice && (
+            <div className={`${getPlatformInfo(cheapestPrice.platform).bgColor} px-2 py-1 rounded-md text-[10px] font-bold text-white uppercase`}>
+              {cheapestPrice.platform}
+            </div>
+          )}
         </div>
 
-        {/* Platform Comparison List */}
-        <div className="space-y-2">
-          {sortedPrices.slice(0, 3).map((p, idx) => {
-            const platformInfo = getPlatformInfo(p.platform);
-            const isLowest = idx === 0;
-            
-            return (
-              <div
-                key={p.platform + idx}
-                className={`flex items-center justify-between px-2.5 py-2 rounded-lg transition-all ${
-                  isLowest
-                    ? 'bg-white border-2 border-emerald-400'
-                    : 'bg-gray-50 border border-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">{platformInfo.icon}</span>
-                  <span className={`text-[11px] font-bold ${isLowest ? 'text-emerald-800' : 'text-gray-600'}`}>
-                    {platformInfo.name}
-                  </span>
-                </div>
-                <span className={`text-xs font-extrabold ${isLowest ? 'text-emerald-600' : 'text-gray-700'}`}>
-                  {formatPrice(p.price)}
-                </span>
-              </div>
-            );
-          })}
+        {/* Küçük platform karşılaştırması */}
+        <div className="space-y-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+          {sortedPrices.slice(0, 3).map((p, idx) => (
+            <div key={idx} className="flex justify-between items-center text-[11px]">
+              <span className="text-gray-500 font-medium">{getPlatformInfo(p.platform).icon} {p.platform}</span>
+              <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
+            </div>
+          ))}
         </div>
       </div>
     </Link>
