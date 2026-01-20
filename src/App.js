@@ -3,13 +3,11 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { LanguageProvider } from "./contexts/LanguageContext";
 
-// Pages
 import HomePage from "./pages/HomePage";
 import ProductsPage from "./pages/ProductsPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import AdminPage from "./pages/AdminPage";
 
-// Components
 import Header from "./components/GlobalHeader";
 import Footer from "./components/Footer";
 
@@ -23,10 +21,8 @@ function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/products" element={<ProductsPage />} />
-              <Route path="/products/:category" element={<ProductsPage />} />
               <Route path="/product/:id" element={<ProductDetailPage />} />
               <Route path="/admin" element={<AdminPage />} />
-              <Route path="/admin/*" element={<AdminPage />} />
             </Routes>
           </main>
           <Footer />
