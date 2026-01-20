@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Menu, X, Globe } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Button } from './ui/button';
 
 export default function Header() {
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -17,7 +16,7 @@ export default function Header() {
     }
   };
 
-  // Üst bar metinleri (7 Dil)
+  // 7 Dil İçin Üst Bar Metinleri
   const topBarText = {
     tr: "AliExpress, Temu ve Shein'den en uygun fiyatları anında karşılaştır!",
     fr: "Comparez instantanément les meilleurs prix d'AliExpress, Temu et Shein !",
@@ -30,50 +29,50 @@ export default function Header() {
 
   return (
     <header className="w-full bg-white shadow-sm sticky top-0 z-50">
-      {/* Üst Bilgi Çubuğu */}
+      {/* Çok Dilli Turuncu Üst Şerit */}
       <div className="bg-[#FB7701] text-white py-2 text-center text-[10px] md:text-xs font-medium px-4">
-        {topBarText[language] || topBarText['en']}
+        {topBarText[language] || topBarText['fr']}
       </div>
 
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-20 gap-4">
           
-          {/* LOGO ALANI - İstediğin Yapı */}
-          <Link to="/" className="flex items-center gap-3 shrink-0 group">
-            <div className="relative flex items-center justify-center w-10 h-10 bg-[#FB7701] rounded-xl shadow-md group-hover:rotate-3 transition-transform">
+          {/* LOGO: GLOBAL + COMPARE & SAVE */}
+          <Link to="/" className="flex items-center gap-3 shrink-0 group no-underline">
+            <div className="relative flex items-center justify-center w-10 h-10 bg-[#FB7701] rounded-xl shadow-md transition-transform group-hover:scale-105">
                <Globe className="text-white h-6 w-6" />
-               <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
+               <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-gray-100">
                  <Search className="h-3 w-3 text-[#FB7701]" />
                </div>
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-2xl font-black tracking-tighter text-gray-900 font-['Outfit'] uppercase">
+              <span className="text-2xl font-black tracking-tighter text-gray-900 font-sans uppercase">
                 GLOBAL
               </span>
-              <span className="text-[10px] font-bold text-[#FB7701] tracking-[0.1em] uppercase">
+              <span className="text-[9px] font-bold text-[#FB7701] tracking-[0.12em] uppercase mt-0.5">
                 Compare & Save
               </span>
             </div>
           </Link>
 
-          {/* Arama Çubuğu */}
+          {/* Arama Barı (Dile Göre Placeholder) */}
           <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md relative">
             <input
               type="text"
-              placeholder={language === 'tr' ? "Ürün ara..." : "Rechercher des produits..."}
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-full text-sm focus:ring-2 focus:ring-[#FB7701] outline-none"
+              placeholder={language === 'tr' ? "Ürün ara..." : "Rechercher..."}
+              className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-full text-sm focus:ring-1 focus:ring-[#FB7701] outline-none"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           </form>
 
-          {/* Sağ Aksiyonlar */}
-          <div className="flex items-center gap-2 md:gap-4">
+          {/* 7 Dil Seçeneği Sunan Dropdown */}
+          <div className="flex items-center gap-3">
             <select 
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="text-xs font-bold bg-gray-50 border rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-[#FB7701]"
+              className="text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-[#FB7701] transition-colors"
             >
               <option value="fr">FR 🇫🇷</option>
               <option value="tr">TR 🇹🇷</option>
@@ -81,13 +80,8 @@ export default function Header() {
               <option value="it">IT 🇮🇹</option>
               <option value="es">ES 🇪🇸</option>
               <option value="nl">NL 🇳🇱</option>
+              <option value="en">EN 🇬🇧</option>
             </select>
-
-            <Link to="/products" className="hidden sm:block">
-              <Button variant="ghost" className="text-sm font-semibold text-gray-700">
-                {language === 'tr' ? 'Ürünler' : 'Produits'}
-              </Button>
-            </Link>
 
             <button className="md:hidden p-2 text-gray-600" onClick={() => setIsMenuOpen(!isMenuOpen)}>
               {isMenuOpen ? <X /> : <Menu />}
