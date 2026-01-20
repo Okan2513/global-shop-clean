@@ -10,8 +10,8 @@ import ProductDetailPage from "./pages/ProductDetailPage";
 import AdminPage from "./pages/AdminPage";
 
 // Components
-import { Header } from "./components/Header";
-import { Footer } from "./components/Footer";
+import  Header  from "./components/Header";
+import  Footer  from "./components/Footer";
 
 function App() {
   return (
