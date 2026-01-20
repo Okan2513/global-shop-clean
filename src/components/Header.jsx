@@ -1,88 +1,107 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, Globe } from 'lucide-react';
+import { Search, Menu, X, Globe, ChevronDown, TrendingUp, Tag } from 'lucide-react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { useLanguage } from '../contexts/LanguageContext';
+import axios from 'axios';
 
-export default function Header() {
-  const { language, setLanguage } = useLanguage();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const Header = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [detectedCategory, setDetectedCategory] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchRef = useRef(null);
+  const debounceRef = useRef(null);
+  const { language, setLanguage, t, availableLanguages } = useLanguage();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery)}`);
+      setShowSuggestions(false);
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
     }
   };
 
-  const topBarText = {
-    tr: "AliExpress, Temu ve Shein'den en uygun fiyatları anında karşılaştır!",
-    fr: "Comparez instantanément les meilleurs prix d'AliExpress, Temu et Shein !",
-    de: "Vergleichen Sie sofort die besten Preise von AliExpress, Temu und Shein!",
-    it: "Confronta istantaneamente i migliori prezzi di AliExpress, Temu e Shein!",
-    es: "¡Compara al instante los mejores precios de AliExpress, Temu y Shein!",
-    nl: "Vergelijk direct de beste prijzen van AliExpress, Temu en Shein!",
-    en: "Instantly compare the best prices from AliExpress, Temu, and Shein!"
+  const getCurrentLanguageInfo = () => {
+    return availableLanguages.find(l => l.code === language) || availableLanguages[0];
   };
 
   return (
-    <header className="w-full bg-white shadow-sm sticky top-0 z-50 font-sans">
-      <div className="bg-[#FB7701] text-white py-2 text-center text-[10px] md:text-xs font-medium px-4">
-        {topBarText[language] || topBarText['en']}
+    <header className="sticky top-0 z-50 bg-white shadow-sm">
+      <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <p className="text-sm font-medium">🎉 {t('hero_description')}</p>
+        </div>
       </div>
-
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-20 gap-4">
-          
-          <Link to="/" className="flex items-center gap-3 shrink-0 no-underline group">
-            <div className="relative flex items-center justify-center w-10 h-10 bg-[#FB7701] rounded-xl shadow-md">
-               <Globe className="text-white h-6 w-6" />
-               <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
-                 <Search className="h-3 w-3 text-[#FB7701]" />
-               </div>
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-2xl font-black tracking-tighter text-gray-900 uppercase">
-                GLOBAL
-              </span>
-              <span className="text-[9px] font-bold text-[#FB7701] tracking-[0.1em] uppercase mt-0.5">
-                Compare & Save
-              </span>
-            </div>
+      <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <Link to="/" className="flex-shrink-0">
+            <h1 className="text-3xl font-bold font-['Outfit']">
+              <span className="text-[#FB7701]">GLO</span>
+              <span className="text-[#1A1A1A]">BAL</span>
+            </h1>
           </Link>
-
-          <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md relative">
-            <input
-              type="text"
-              placeholder={language === 'tr' ? "Ürün ara..." : "Rechercher..."}
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-full text-sm focus:ring-1 focus:ring-[#FB7701] outline-none"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          </form>
-
+          <div className="hidden md:flex flex-1 max-w-xl">
+            <div ref={searchRef} className="relative w-full">
+              <form onSubmit={handleSearch}>
+                <Input
+                  placeholder={t('search_placeholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-4 pr-12 py-3 rounded-full border-2 border-gray-200"
+                />
+                <Button type="submit" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 bg-[#FB7701] rounded-full h-9 w-9">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </form>
+            </div>
+          </div>
           <div className="flex items-center gap-3">
-            <select 
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none cursor-pointer"
-            >
-              <option value="fr">FR 🇫🇷</option>
-              <option value="tr">TR 🇹🇷</option>
-              <option value="de">DE 🇩🇪</option>
-              <option value="it">IT 🇮🇹</option>
-              <option value="es">ES 🇪🇸</option>
-              <option value="nl">NL 🇳🇱</option>
-              <option value="en">EN 🇬🇧</option>
-            </select>
-            <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              {isMenuOpen ? <X /> : <Menu />}
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <span className="text-lg">{getCurrentLanguageInfo()?.flag}</span>
+                  <span className="hidden sm:inline uppercase font-medium">{language}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {availableLanguages.map((lang) => (
+                  <DropdownMenuItem key={lang.code} onClick={() => setLanguage(lang.code)}>
+                    <span className="text-lg mr-2">{lang.flag}</span>
+                    <span>{lang.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
     </header>
   );
-}
+};
+
+export default Header;
