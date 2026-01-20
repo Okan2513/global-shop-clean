@@ -1,78 +1,118 @@
-import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
-import { ProductCard } from "../components/ProductCard";
-import { Skeleton } from "../components/ui/skeleton";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, TrendingDown, Shield, Zap } from 'lucide-react';
+// @ işaretlerini temizledik, standart yollara döndük
+import { Button } from '../components/ui/button';
+import { ProductCard } from '../components/ProductCard';
+import { Skeleton } from '../components/ui/skeleton';
+import { useLanguage } from '../contexts/LanguageContext';
+import axios from 'axios';
 
-// İsimleri eşitledik: Artık her iki sayfa da aynı değişkene bakıyor
-const RAW_BASE_URL = process.env.REACT_APP_BACKEND_URL;
-
-const API_BASE_URL = RAW_BASE_URL 
-  ? `${RAW_BASE_URL.replace(/\/$/, "")}/api` 
+// Backend bağlantısı için güvenli yol
+const API = process.env.REACT_APP_BACKEND_URL 
+  ? `${process.env.REACT_APP_BACKEND_URL.replace(/\/$/, "")}/api` 
   : null;
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const { t, language } = useLanguage();
-
-  const fetchData = useCallback(async () => {
-    if (!API_BASE_URL) {
-      console.error("REACT_APP_BACKEND_URL tanımlı değil");
-      setError(true);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      // Ana sayfa için en popüler veya rastgele ürünleri çekiyoruz
-      const res = await axios.get(`${API_BASE_URL}/products?lang=${language}`);
-      if (Array.isArray(res.data)) {
-        setProducts(res.data.slice(0, 8)); // İlk 8 ürünü göster
-      }
-      setError(false);
-    } catch (err) {
-      console.error("Fetch error:", err);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [language]);
+  const { language, t } = useLanguage();
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [language]);
+
+  const fetchData = async () => {
+    if (!API) {
+      console.warn("REACT_APP_BACKEND_URL is not defined");
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const [productsRes, categoriesRes] = await Promise.all([
+        axios.get(`${API}/products?limit=12&lang=${language}`),
+        axios.get(`${API}/categories?lang=${language}`)
+      ]);
+      
+      setProducts(productsRes.data || []);
+      setCategories(categoriesRes.data || []);
+    } catch (error) {
+      console.error('Data fetch error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const features = [
+    {
+      icon: TrendingDown,
+      title: language === 'tr' ? 'En Ucuz Fiyat' : 'Meilleur Prix',
+      description: language === 'tr' ? '3 platformu karşılaştır' : 'Comparez 3 plateformes'
+    },
+    {
+      icon: Zap,
+      title: language === 'tr' ? 'Otomatik Güncelleme' : 'Sync en Direct',
+      description: language === 'tr' ? 'Fiyatlar anlık güncellenir' : 'Prix mis à jour en direct'
+    }
+  ];
+
+  const getBentoClass = (index) => {
+    const classes = ['col-span-2 row-span-2', 'col-span-1', 'col-span-1', 'row-span-2', 'col-span-1', 'col-span-2'];
+    return classes[index % classes.length];
+  };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold mb-6 text-gray-800">
-          {t('popular_products') || 'Produits Populaires'}
-        </h2>
+    <div className="min-h-screen">
+      {/* Hero Section - Emergent Design */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#FB7701] via-[#FF8C00] to-[#FFD700] py-16 md:py-24">
+        <div className="max-w-7xl mx-auto px-4 relative z-10">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <div className="text-white">
+              <h1 className="text-4xl md:text-6xl font-bold font-['Outfit'] mb-4">
+                {language === 'tr' ? (
+                  <>Fiyatları<br /><span className="text-[#1A1A1A]">Karşılaştır!</span></>
+                ) : (
+                  <>Comparez.<br /><span className="text-[#1A1A1A]">Achetez Malin!</span></>
+                )}
+              </h1>
+              <p className="text-lg text-white/90 mb-8">
+                {language === 'tr' 
+                  ? 'AliExpress, Temu ve Shein ürünlerini anında kıyasla.'
+                  : 'Comparez les prix d\'AliExpress, Temu et Shein instantanément.'}
+              </p>
+              <Link to="/products">
+                <Button size="lg" className="bg-[#1A1A1A] text-white rounded-full px-8 py-6 font-bold">
+                  {t('hero_cta') || 'Démarrer'}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="aspect-[4/5] rounded-2xl" />
-            ))}
+      {/* Categories Bento Grid */}
+      <section className="py-12">
+        <div className="max-w-7xl mx-auto px-4">
+          <h2 className="text-3xl font-bold mb-8">{t('categories') || 'Catégories'}</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[150px]">
+            {loading ? (
+              [...Array(4)].map((_, i) => <Skeleton key={i} className={`${getBentoClass(i)} rounded-2xl`} />)
+            ) : (
+              categories.slice(0, 6).map((cat, i) => (
+                <Link key={cat.id} to={`/products/${cat.slug}`} className={`relative overflow-hidden rounded-2xl group ${getBentoClass(i)}`}>
+                  <img src={cat.image} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform" alt={cat.name} />
+                  <div className="absolute inset-0 bg-black/40 flex items-end p-4">
+                    <h3 className="text-white font-bold">{language === 'tr' ? (cat.name_tr || cat.name) : cat.name}</h3>
+                  </div>
+                </Link>
+              ))
+            )}
           </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-600 p-6 rounded-2xl text-center">
-            <p className="font-semibold">
-              {language === 'tr' 
-                ? 'API bağlantısı yok (Backend adresi eksik)' 
-                : 'Erreur de connexion API (Adresse backend manquante)'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        )}
+        </div>
       </section>
     </div>
   );
