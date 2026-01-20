@@ -16,7 +16,6 @@ export default function Header() {
     }
   };
 
-  // 7 Dil İçin Üst Bar Metinleri
   const topBarText = {
     tr: "AliExpress, Temu ve Shein'den en uygun fiyatları anında karşılaştır!",
     fr: "Comparez instantanément les meilleurs prix d'AliExpress, Temu et Shein !",
@@ -28,34 +27,31 @@ export default function Header() {
   };
 
   return (
-    <header className="w-full bg-white shadow-sm sticky top-0 z-50">
-      {/* Çok Dilli Turuncu Üst Şerit */}
+    <header className="w-full bg-white shadow-sm sticky top-0 z-50 font-sans">
       <div className="bg-[#FB7701] text-white py-2 text-center text-[10px] md:text-xs font-medium px-4">
-        {topBarText[language] || topBarText['fr']}
+        {topBarText[language] || topBarText['en']}
       </div>
 
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-20 gap-4">
           
-          {/* LOGO: GLOBAL + COMPARE & SAVE */}
-          <Link to="/" className="flex items-center gap-3 shrink-0 group no-underline">
-            <div className="relative flex items-center justify-center w-10 h-10 bg-[#FB7701] rounded-xl shadow-md transition-transform group-hover:scale-105">
+          <Link to="/" className="flex items-center gap-3 shrink-0 no-underline group">
+            <div className="relative flex items-center justify-center w-10 h-10 bg-[#FB7701] rounded-xl shadow-md">
                <Globe className="text-white h-6 w-6" />
-               <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-gray-100">
+               <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
                  <Search className="h-3 w-3 text-[#FB7701]" />
                </div>
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-2xl font-black tracking-tighter text-gray-900 font-sans uppercase">
+              <span className="text-2xl font-black tracking-tighter text-gray-900 uppercase">
                 GLOBAL
               </span>
-              <span className="text-[9px] font-bold text-[#FB7701] tracking-[0.12em] uppercase mt-0.5">
+              <span className="text-[9px] font-bold text-[#FB7701] tracking-[0.1em] uppercase mt-0.5">
                 Compare & Save
               </span>
             </div>
           </Link>
 
-          {/* Arama Barı (Dile Göre Placeholder) */}
           <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md relative">
             <input
               type="text"
@@ -67,12 +63,11 @@ export default function Header() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           </form>
 
-          {/* 7 Dil Seçeneği Sunan Dropdown */}
           <div className="flex items-center gap-3">
             <select 
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-[#FB7701] transition-colors"
+              className="text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none cursor-pointer"
             >
               <option value="fr">FR 🇫🇷</option>
               <option value="tr">TR 🇹🇷</option>
@@ -82,8 +77,7 @@ export default function Header() {
               <option value="nl">NL 🇳🇱</option>
               <option value="en">EN 🇬🇧</option>
             </select>
-
-            <button className="md:hidden p-2 text-gray-600" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
               {isMenuOpen ? <X /> : <Menu />}
             </button>
           </div>
