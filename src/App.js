@@ -3,13 +3,15 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { LanguageProvider } from "./contexts/LanguageContext";
 
+// Pages
 import HomePage from "./pages/HomePage";
 import ProductsPage from "./pages/ProductsPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import AdminPage from "./pages/AdminPage";
 
-import Header from "./components/Header";
-import Footer from "./components/Footer";
+// Components
+import { Header } from "./components/Header";
+import { Footer } from "./components/Footer";
 
 function App() {
   return (
