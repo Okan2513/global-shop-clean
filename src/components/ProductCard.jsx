@@ -4,12 +4,13 @@ import { Badge } from './ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export const ProductCard = ({ product }) => {
-  const { language } = useLanguage();
+  // t fonksiyonunu ekledik, labels sözlüğüne gerek kalmadı
+  const { language, t } = useLanguage();
 
   // Avrupa (Euro) formatı: 1.234,56 €
-  // Locales dizisi kullanarak kullanıcının diline göre otomatik formatlama sağlar
   const formatPrice = (price) => {
     const localeMap = {
+      en: 'en-GB', // İngilizce eklendi
       tr: 'tr-TR',
       fr: 'fr-FR',
       de: 'de-DE',
@@ -18,7 +19,7 @@ export const ProductCard = ({ product }) => {
       nl: 'nl-NL'
     };
 
-    return new Intl.NumberFormat(localeMap[language] || 'fr-FR', {
+    return new Intl.NumberFormat(localeMap[language] || 'en-GB', {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 2
@@ -36,8 +37,8 @@ export const ProductCard = ({ product }) => {
     return platforms[p] || { name: platform || 'Store', bgColor: 'bg-gray-500', icon: '🏬' };
   };
 
-  // Dinamik İsim Seçimi: name_fr, name_de, name_it vb. varsa onu kullanır
-  const productName = product[`name_${language}`] || product.name;
+  // Dinamik İsim: name_en, name_fr vb.
+  const productName = product[`name_${language}`] || product.name_en || product.name;
   
   const sortedPrices = Array.isArray(product.prices) 
     ? [...product.prices].sort((a, b) => (a.price || 0) - (b.price || 0)) 
@@ -46,15 +47,6 @@ export const ProductCard = ({ product }) => {
   const cheapestPrice = sortedPrices[0];
   const maxPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price : 0;
   const priceDifference = maxPrice > 0 ? maxPrice - (cheapestPrice?.price || 0) : 0;
-
-  // 6 Dil Destekli Sözlük
-  const labels = {
-    savings: { tr: 'Kazanç:', fr: 'Économie:', de: 'Ersparnis:', it: 'Risparmio:', es: 'Ahorro:', nl: 'Besparing:' },
-    bestPrice: { tr: 'En İyi Fiyat', fr: 'Meilleur Prix', de: 'Bester Preis', it: 'Miglior Prezzo', es: 'Mejor Precio', nl: 'Beste Prijs' },
-    compare: { tr: 'Karşılaştır', fr: 'Comparer', de: 'Vergleichen', it: 'Confronta', es: 'Comparar', nl: 'Vergelijken' }
-  };
-
-  const getLabel = (key) => labels[key][language] || labels[key]['fr'];
 
   return (
     <Link 
@@ -81,14 +73,15 @@ export const ProductCard = ({ product }) => {
           <div className="absolute bottom-3 left-3 z-10">
             <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
               <TrendingDown className="h-3 w-3" />
-              {getLabel('savings')} {formatPrice(priceDifference)}
+              {/* Context'ten gelen çeviriyi kullanıyoruz */}
+              {t('savings')} {formatPrice(priceDifference)}
             </div>
           </div>
         )}
 
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center z-20">
           <span className="opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0 bg-[#FB7701] text-white px-6 py-2 rounded-full text-xs font-bold shadow-xl">
-            {getLabel('compare')}
+            {t('compare_prices')}
           </span>
         </div>
       </div>
@@ -101,7 +94,7 @@ export const ProductCard = ({ product }) => {
         <div className="bg-emerald-50 rounded-xl p-3 mb-4 border border-emerald-100 flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
-              {getLabel('bestPrice')}
+              {t('best_price')}
             </span>
             <span className="text-xl font-black text-emerald-600">
               {formatPrice(product.best_price || cheapestPrice?.price)}
@@ -114,7 +107,6 @@ export const ProductCard = ({ product }) => {
           )}
         </div>
 
-        {/* Küçük platform karşılaştırması */}
         <div className="space-y-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
           {sortedPrices.slice(0, 3).map((p, idx) => (
             <div key={idx} className="flex justify-between items-center text-[11px] border-b border-gray-50 pb-1 last:border-0">
