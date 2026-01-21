@@ -1,29 +1,24 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
-// Extensible translations - add new languages by adding new key
+// Tüm diller için eksik anahtarlar tamamlandı
 const translations = {
   en: {
-    // Header
     search_placeholder: "Search products...",
     all_products: "All Products",
+    category_products: "Category Products", // Eklendi
+    go_to_store: "Go to Store", // Eklendi
     admin: "Admin",
     categories: "Categories",
-    
-    // Hero
     hero_title: "Compare Prices.",
     hero_subtitle: "Shop Smarter!",
     hero_description: "Compare prices from AliExpress, Temu, and Shein instantly. Smart shopping, smart savings!",
     hero_cta: "Start Comparing",
-    
-    // Features
     best_prices: "Best Prices",
     compare_platforms: "Compare 3 platforms",
     auto_updates: "Auto Updates",
     realtime_sync: "Real-time sync",
     safe_shopping: "Safe Shopping",
     direct_stores: "Direct to stores",
-    
-    // Products
     products: "products",
     view_all: "View All",
     popular_products: "Popular Products",
@@ -32,8 +27,6 @@ const translations = {
     similar_products: "Similar Products",
     product_details: "Product Details",
     product_description: "Product Description",
-    
-    // Price Comparison
     price_comparison: "Price Comparison",
     best_price: "Best Price",
     from: "from",
@@ -41,8 +34,6 @@ const translations = {
     out_of_stock: "Out of Stock",
     savings: "Save",
     in_stock: "In Stock",
-    
-    // Filters
     price_range: "Price Range",
     platforms: "Platforms",
     filters: "Filters",
@@ -53,8 +44,6 @@ const translations = {
     price_high_low: "Price: High to Low",
     newest: "Newest",
     biggest_discount: "Biggest Discount",
-    
-    // Footer
     footer_description: "Compare prices across AliExpress, Temu, and Shein. Find the best deals instantly.",
     quick_links: "Quick Links",
     home: "Home",
@@ -62,8 +51,6 @@ const translations = {
     privacy_policy: "Privacy Policy",
     terms_of_service: "Terms of Service",
     all_rights_reserved: "All rights reserved.",
-    
-    // Misc
     no_products_found: "No products found",
     try_adjusting_filters: "Try adjusting your filters",
     product_not_found: "Product not found",
@@ -77,6 +64,8 @@ const translations = {
   tr: {
     search_placeholder: "Ürün ara...",
     all_products: "Tüm Ürünler",
+    category_products: "Kategori Ürünleri",
+    go_to_store: "Mağazaya Git",
     admin: "Yönetici",
     categories: "Kategoriler",
     hero_title: "Fiyatları",
@@ -134,6 +123,8 @@ const translations = {
   fr: {
     search_placeholder: "Rechercher des produits...",
     all_products: "Tous les Produits",
+    category_products: "Produits de la catégorie",
+    go_to_store: "Aller à la boutique",
     admin: "Admin",
     categories: "Catégories",
     hero_title: "Comparez les Prix.",
@@ -191,6 +182,8 @@ const translations = {
   de: {
     search_placeholder: "Produkte suchen...",
     all_products: "Alle Produkte",
+    category_products: "Kategorie Produkte",
+    go_to_store: "Zum Shop",
     admin: "Admin",
     categories: "Kategorien",
     hero_title: "Preise Vergleichen.",
@@ -248,6 +241,8 @@ const translations = {
   it: {
     search_placeholder: "Cerca prodotti...",
     all_products: "Tutti i Prodotti",
+    category_products: "Prodotti della categoria",
+    go_to_store: "Vai al negozio",
     admin: "Admin",
     categories: "Categorie",
     hero_title: "Confronta i Prezzi.",
@@ -305,6 +300,8 @@ const translations = {
   es: {
     search_placeholder: "Buscar productos...",
     all_products: "Todos los Productos",
+    category_products: "Productos de categoría",
+    go_to_store: "Ir a la tienda",
     admin: "Admin",
     categories: "Categorías",
     hero_title: "Compara Precios.",
@@ -362,6 +359,8 @@ const translations = {
   nl: {
     search_placeholder: "Producten zoeken...",
     all_products: "Alle Producten",
+    category_products: "Categorie Producten",
+    go_to_store: "Naar de winkel",
     admin: "Admin",
     categories: "Categorieën",
     hero_title: "Vergelijk Prijzen.",
@@ -411,13 +410,12 @@ const translations = {
     product_not_found: "Product niet gevonden",
     link_copied: "Link gekopieerd!",
     share: "Delen",
-    everything_here: "Alles wat je nodig hebt is hier",
+    everything_here: "Alles wat je hebt is hier",
     dont_miss: "Mis de Beste Prijzen Niet!",
     compare_thousands: "Vergelijk duizenden producten met GLOBAL en vind de beste deals!",
   },
 };
 
-// Language metadata for the switcher
 export const languageOptions = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
   { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
@@ -441,7 +439,8 @@ export const useLanguage = () => {
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
     const saved = localStorage.getItem('global_language');
-    return saved && translations[saved] ? saved : 'en';
+    // Fransa yayını için varsayılanı 'fr' yapıyoruz
+    return saved && translations[saved] ? saved : 'fr'; 
   });
 
   useEffect(() => {
@@ -456,10 +455,9 @@ export const LanguageProvider = ({ children }) => {
   };
 
   const t = (key) => {
-    return translations[language]?.[key] || translations['en']?.[key] || key;
+    return translations[language]?.[key] || translations['fr']?.[key] || key;
   };
 
-  // Get all available languages
   const availableLanguages = languageOptions.filter(opt => translations[opt.code]);
 
   return (
