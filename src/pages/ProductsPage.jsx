@@ -6,7 +6,6 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { useLanguage } from '../contexts/LanguageContext';
 
-// Backend URL güvenliği sağlandı
 const API = process.env.REACT_APP_BACKEND_URL 
   ? `${process.env.REACT_APP_BACKEND_URL.replace(/\/$/, "")}/api` 
   : null;
@@ -20,20 +19,20 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  /**
-   * 💶 AVRUPA STANDARTLARINDA FİYAT FORMATI
-   * Fransa ve diğer Avrupa ülkeleri için: 1.234,56 € şeklinde çıktı verir.
-   */
-  const formatEuro = useCallback((amount) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-    }).format(amount || 0);
-  }, []);
+  // Tüm 6 dil için hata mesajları sözlüğü
+  const errorMessages = {
+    tr: "Ürünler yüklenirken bir hata oluştu.",
+    fr: "Erreur lors du chargement des produits.",
+    de: "Fehler beim Laden der Produkte.",
+    it: "Errore durante il caricamento dei prodotti.",
+    es: "Error al cargar los productos.",
+    nl: "Fout bij het laden van producten.",
+    en: "Error loading products."
+  };
 
   const fetchProducts = useCallback(async () => {
     if (!API) {
-      setError("API URL is missing in .env file.");
+      setError("API URL configuration missing.");
       setLoading(false);
       return;
     }
@@ -41,30 +40,21 @@ export default function ProductsPage() {
     setLoading(true);
     setError(null);
     try {
+      // API'ye dili de gönderiyoruz ki backend ona göre doğru isimleri göndersin
       const url = categorySlug
         ? `${API}/products?category=${categorySlug}&lang=${language}`
         : `${API}/products?lang=${language}`;
 
       const res = await axios.get(url);
       
-      // HATA ÖNLEME: Gelen verinin dizi olup olmadığını garantiye alıyoruz
-      if (res.data && Array.isArray(res.data)) {
-        setProducts(res.data);
-      } else if (res.data && Array.isArray(res.data.products)) {
-        // Bazı API'ler { products: [] } şeklinde döner, bunu da kapsayalım
-        setProducts(res.data.products);
-      } else {
-        setProducts([]);
-      }
+      // Veri yapısı kontrolü: res.data doğrudan dizi mi yoksa bir nesne içinde mi?
+      const data = res.data?.products || (Array.isArray(res.data) ? res.data : []);
+      setProducts(data);
+
     } catch (err) {
-      console.error('Failed to fetch products:', err);
-      const errorMsg = {
-        tr: "Ürünler yüklenirken bir hata oluştu.",
-        fr: "Erreur lors du chargement des produits.",
-        en: "Error loading products."
-      };
-      setError(errorMsg[language] || errorMsg['fr']);
-      setProducts([]); // Hata durumunda boş dizi set ederek .map hatasını engelliyoruz
+      console.error('Fetch error:', err);
+      setError(errorMessages[language] || errorMessages['fr']);
+      setProducts([]); 
     } finally {
       setLoading(false);
     }
@@ -74,11 +64,9 @@ export default function ProductsPage() {
     if (!API) return;
     try {
       const res = await axios.get(`${API}/categories?lang=${language}`);
-      if (res.data && Array.isArray(res.data)) {
-        setCategories(res.data);
-      }
+      setCategories(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      console.error('Failed to fetch categories:', err);
+      console.error('Categories fetch error:', err);
     }
   }, [language]);
 
@@ -116,17 +104,11 @@ export default function ProductsPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        {/* ?.map kullanarak değişken dizi değilse bile uygulamanın çökmesini engelledik */}
         {products?.length > 0 ? (
           products.map((product) => (
             <ProductCard 
-              key={product.id || `prod-${Math.random()}`} 
-              product={{
-                ...product,
-                // Fiyatı burada formatlayıp gönderiyoruz
-                displayPrice: formatEuro(product.price),
-                buttonText: t('go_to_store') || 'Voir plus'
-              }} 
+              key={product.id || `p-${Math.random()}`} 
+              product={product} 
             />
           ))
         ) : (
