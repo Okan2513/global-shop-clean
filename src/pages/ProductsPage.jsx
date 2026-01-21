@@ -20,17 +20,20 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Avrupa Standartlarında Fiyat Formatı (Fransa, Almanya, Hollanda vb. için uygun)
-  const formatEuro = (amount) => {
+  /**
+   * 💶 AVRUPA STANDARTLARINDA FİYAT FORMATI
+   * Fransa ve diğer Avrupa ülkeleri için: 1.234,56 € şeklinde çıktı verir.
+   */
+  const formatEuro = useCallback((amount) => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: 'EUR',
     }).format(amount || 0);
-  };
+  }, []);
 
   const fetchProducts = useCallback(async () => {
     if (!API) {
-      setError("Bağlantı ayarları eksik.");
+      setError("API URL is missing in .env file.");
       setLoading(false);
       return;
     }
@@ -44,24 +47,24 @@ export default function ProductsPage() {
 
       const res = await axios.get(url);
       
-      if (Array.isArray(res.data)) {
+      // HATA ÖNLEME: Gelen verinin dizi olup olmadığını garantiye alıyoruz
+      if (res.data && Array.isArray(res.data)) {
         setProducts(res.data);
+      } else if (res.data && Array.isArray(res.data.products)) {
+        // Bazı API'ler { products: [] } şeklinde döner, bunu da kapsayalım
+        setProducts(res.data.products);
       } else {
         setProducts([]);
       }
     } catch (err) {
       console.error('Failed to fetch products:', err);
-      // Hata mesajını dile göre dinamik yapıyoruz
       const errorMsg = {
         tr: "Ürünler yüklenirken bir hata oluştu.",
         fr: "Erreur lors du chargement des produits.",
-        de: "Fehler beim Laden der Produkte.",
-        it: "Errore durante il caricamento dei prodotti.",
-        es: "Error al cargar los productos.",
-        nl: "Fout bij het laden van producten."
+        en: "Error loading products."
       };
       setError(errorMsg[language] || errorMsg['fr']);
-      setProducts([]);
+      setProducts([]); // Hata durumunda boş dizi set ederek .map hatasını engelliyoruz
     } finally {
       setLoading(false);
     }
@@ -71,7 +74,7 @@ export default function ProductsPage() {
     if (!API) return;
     try {
       const res = await axios.get(`${API}/categories?lang=${language}`);
-      if (Array.isArray(res.data)) {
+      if (res.data && Array.isArray(res.data)) {
         setCategories(res.data);
       }
     } catch (err) {
@@ -89,8 +92,8 @@ export default function ProductsPage() {
       <div className="max-w-7xl mx-auto p-4 grid grid-cols-2 md:grid-cols-4 gap-6">
         {[...Array(8)].map((_, i) => (
           <div key={i} className="flex flex-col gap-3">
-            <Skeleton className="aspect-[4/5] rounded-2xl bg-gray-200" />
-            <Skeleton className="h-4 w-3/4 bg-gray-200" />
+            <Skeleton className="aspect-[4/5] rounded-2xl bg-gray-100" />
+            <Skeleton className="h-4 w-3/4 bg-gray-100" />
           </div>
         ))}
       </div>
@@ -102,8 +105,8 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold font-['Outfit']">
           {categorySlug
-            ? t('category_products') || 'Produits de catégorie'
-            : t('all_products') || 'Tous les produits'}
+            ? (t('category_products') || 'Produits')
+            : (t('all_products') || 'Tous les produits')}
         </h1>
         <Link to="/">
           <Button variant="ghost" className="hover:bg-orange-50 text-orange-600 font-semibold">
@@ -113,15 +116,16 @@ export default function ProductsPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        {products.length > 0 ? (
+        {/* ?.map kullanarak değişken dizi değilse bile uygulamanın çökmesini engelledik */}
+        {products?.length > 0 ? (
           products.map((product) => (
             <ProductCard 
-              key={product.id || Math.random()} 
+              key={product.id || `prod-${Math.random()}`} 
               product={{
                 ...product,
-                // Hem fiyatı hem de mağaza buton yazısını dile duyarlı hale getiriyoruz
+                // Fiyatı burada formatlayıp gönderiyoruz
                 displayPrice: formatEuro(product.price),
-                buttonText: t('go_to_store') // Bu anahtar LanguageContext'te olmalı
+                buttonText: t('go_to_store') || 'Voir plus'
               }} 
             />
           ))
