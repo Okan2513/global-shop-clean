@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // 'import' küçük harf yapıldı
 import { Link } from 'react-router-dom';
 import { Facebook, Twitter, Instagram, Mail } from 'lucide-react';
-// Vercel hatası için alias yerine relative path
+// Vercel hatası için alias yerine relative path kullanıldı
 import { useLanguage } from '../contexts/LanguageContext';
 import axios from 'axios';
 
@@ -67,7 +67,7 @@ export const Footer = () => {
             </ul>
           </div>
 
-          {/* 3. Sütun: Yasal Linkler (Burayı bağladık!) */}
+          {/* 3. Sütun: Yasal Linkler */}
           <div>
             <h4 className="text-lg font-bold mb-6 font-['Outfit']">{language === 'tr' ? 'Yasal' : 'Legal'}</h4>
             <ul className="space-y-4 text-gray-400 text-sm font-medium">
