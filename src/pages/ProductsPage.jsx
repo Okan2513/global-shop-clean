@@ -1,4 +1,30 @@
-// ... (İmportlar orijinal kodun aynısı)
+import { useState, useEffect } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { Filter, Grid3X3, LayoutGrid, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ProductCard } from '@/components/ProductCard';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useLanguage } from '@/contexts/LanguageContext';
+import axios from 'axios';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function ProductsPage() {
   const { category } = useParams();
@@ -9,6 +35,7 @@ export default function ProductsPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [gridSize, setGridSize] = useState('normal');
+  
   const [priceRange, setPriceRange] = useState([0, 500]);
   const [selectedPlatforms, setSelectedPlatforms] = useState([]);
   const [sortBy, setSortBy] = useState('popular');
@@ -17,7 +44,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     fetchCategories();
-  }, [language]); // Dil değişince kategoriler güncellenir
+  }, [language]);
 
   useEffect(() => {
     fetchProducts();
@@ -45,8 +72,6 @@ export default function ProductsPage() {
       params.append('lang', language);
 
       const response = await axios.get(`${API}/products?${params.toString()}`);
-      
-      // HATA KORUMASI:
       const data = response.data?.products || (Array.isArray(response.data) ? response.data : []);
       setProducts(data);
     } catch (error) {
@@ -64,5 +89,119 @@ export default function ProductsPage() {
     return category;
   };
 
-  // Orijinal UI yapısı (Breadcrumb, FilterContent, Grid vs.) aşağıda aynen devam eder...
-  // t() fonksiyonu ile tüm başlıklar otomatik dile göre değişir.
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
+  };
+
+  const platforms = ['aliexpress', 'temu', 'shein'];
+
+  const FilterContent = () => (
+    <div className="space-y-6">
+      <div>
+        <h4 className="font-semibold text-gray-800 mb-3">{t('categories')}</h4>
+        <div className="space-y-2">
+          {categories.map((cat) => (
+            <Link
+              key={cat.id}
+              to={`/products/${cat.slug}`}
+              className={`block px-3 py-2 rounded-lg transition-colors ${category === cat.slug ? 'bg-[#FB7701]/10 text-[#FB7701] font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              {cat[`name_${language}`] || cat.name_tr || cat.name}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="font-semibold text-gray-800 mb-3">{t('price_range')}</h4>
+        <Slider value={priceRange} onValueChange={setPriceRange} min={0} max={500} step={10} className="mb-4" />
+        <div className="flex items-center gap-2">
+          <Input type="number" value={priceRange[0]} onChange={(e) => setPriceRange([parseInt(e.target.value) || 0, priceRange[1]])} className="text-center text-sm" />
+          <span className="text-gray-400">-</span>
+          <Input type="number" value={priceRange[1]} onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value) || 500])} className="text-center text-sm" />
+        </div>
+      </div>
+
+      <div>
+        <h4 className="font-semibold text-gray-800 mb-3">{t('platforms')}</h4>
+        <div className="space-y-2">
+          {platforms.map((platform) => (
+            <label key={platform} className="flex items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedPlatforms.includes(platform)}
+                onCheckedChange={(checked) => {
+                  if (checked) setSelectedPlatforms([...selectedPlatforms, platform]);
+                  else setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform));
+                }}
+              />
+              <span className="capitalize text-sm text-gray-700">{platform}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F5]">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {searchQuery ? `"${searchQuery}"` : getCategoryName()}
+            </h1>
+            <p className="text-gray-500 mt-1">{products.length} {t('products')}</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t('sort_by')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="popular">{t('popular')}</SelectItem>
+                <SelectItem value="price_asc">{t('price_low_high')}</SelectItem>
+                <SelectItem value="price_desc">{t('price_high_low')}</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="md:hidden">
+                  <Filter className="h-4 w-4 mr-2" />{t('filters')}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left">
+                <div className="mt-6"><FilterContent /></div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+
+        <div className="flex gap-8">
+          <aside className="hidden md:block w-64 flex-shrink-0">
+            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24">
+              <FilterContent />
+            </div>
+          </aside>
+
+          <div className="flex-1">
+            {loading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[...Array(8)].map((_, i) => (<div key={i} className="space-y-3"><Skeleton className="aspect-square rounded-xl" /><Skeleton className="h-4 w-3/4" /></div>))}
+              </div>
+            ) : products.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed">
+                <p className="text-gray-500">{t('no_products_found')}</p>
+              </div>
+            ) : (
+              <div className={`grid gap-4 ${gridSize === 'compact' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}`}>
+                {products.map((product) => (<ProductCard key={product.id} product={product} />))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
