@@ -1,49 +1,60 @@
 import { Link } from 'react-router-dom';
-import { Star, TrendingDown, Award } from 'lucide-react';
+import { TrendingDown } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export const ProductCard = ({ product }) => {
-  const { language, t } = useLanguage();
+  const { language } = useLanguage();
 
   // Avrupa (Euro) formatı: 1.234,56 €
+  // Locales dizisi kullanarak kullanıcının diline göre otomatik formatlama sağlar
   const formatPrice = (price) => {
-    return new Intl.NumberFormat(language === 'tr' ? 'tr-TR' : 'fr-FR', {
+    const localeMap = {
+      tr: 'tr-TR',
+      fr: 'fr-FR',
+      de: 'de-DE',
+      it: 'it-IT',
+      es: 'es-ES',
+      nl: 'nl-NL'
+    };
+
+    return new Intl.NumberFormat(localeMap[language] || 'fr-FR', {
       style: 'currency',
-      currency: 'EUR'
+      currency: 'EUR',
+      minimumFractionDigits: 2
     }).format(price || 0);
   };
 
   const getPlatformInfo = (platform) => {
-    switch (platform?.toLowerCase()) {
-      case 'aliexpress': 
-        return { name: 'AliExpress', bgColor: 'bg-[#FF4747]', textColor: 'text-white', icon: '🛒' };
-      case 'temu': 
-        return { name: 'Temu', bgColor: 'bg-[#FF6000]', textColor: 'text-white', icon: '🏪' };
-      case 'shein': 
-        return { name: 'Shein', bgColor: 'bg-black', textColor: 'text-white', icon: '👗' };
-      default: 
-        return { name: platform || 'Platform', bgColor: 'bg-gray-500', textColor: 'text-white', icon: '🏬' };
-    }
+    const p = platform?.toLowerCase();
+    const platforms = {
+      aliexpress: { name: 'AliExpress', bgColor: 'bg-[#FF4747]', icon: '🛒' },
+      temu: { name: 'Temu', bgColor: 'bg-[#FF6000]', icon: '🏪' },
+      shein: { name: 'Shein', bgColor: 'bg-black', icon: '👗' },
+      amazon: { name: 'Amazon', bgColor: 'bg-[#232f3e]', icon: '📦' }
+    };
+    return platforms[p] || { name: platform || 'Store', bgColor: 'bg-gray-500', icon: '🏬' };
   };
 
-  const productName = language === 'tr' && product.name_tr ? product.name_tr : product.name;
+  // Dinamik İsim Seçimi: name_fr, name_de, name_it vb. varsa onu kullanır
+  const productName = product[`name_${language}`] || product.name;
   
   const sortedPrices = Array.isArray(product.prices) 
-    ? [...product.prices].sort((a, b) => a.price - b.price) 
+    ? [...product.prices].sort((a, b) => (a.price || 0) - (b.price || 0)) 
     : [];
     
   const cheapestPrice = sortedPrices[0];
-  const priceDifference = sortedPrices.length > 1 
-    ? sortedPrices[sortedPrices.length - 1].price - sortedPrices[0].price 
-    : 0;
+  const maxPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price : 0;
+  const priceDifference = maxPrice > 0 ? maxPrice - (cheapestPrice?.price || 0) : 0;
 
-  // Çok dilli etiketler sözlüğü
+  // 6 Dil Destekli Sözlük
   const labels = {
     savings: { tr: 'Kazanç:', fr: 'Économie:', de: 'Ersparnis:', it: 'Risparmio:', es: 'Ahorro:', nl: 'Besparing:' },
     bestPrice: { tr: 'En İyi Fiyat', fr: 'Meilleur Prix', de: 'Bester Preis', it: 'Miglior Prezzo', es: 'Mejor Precio', nl: 'Beste Prijs' },
     compare: { tr: 'Karşılaştır', fr: 'Comparer', de: 'Vergleichen', it: 'Confronta', es: 'Comparar', nl: 'Vergelijken' }
   };
+
+  const getLabel = (key) => labels[key][language] || labels[key]['fr'];
 
   return (
     <Link 
@@ -54,30 +65,30 @@ export const ProductCard = ({ product }) => {
         <img
           src={product.image || 'https://via.placeholder.com/300'}
           alt={productName}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
           loading="lazy"
         />
         
         {product.discount_percent > 0 && (
-          <div className="absolute top-3 left-3">
-            <Badge className="bg-red-600 text-white font-black px-2 py-1 rounded-lg">
+          <div className="absolute top-3 left-3 z-10">
+            <Badge className="bg-red-600 text-white font-black px-2 py-1 rounded-lg border-none">
               -{product.discount_percent}%
             </Badge>
           </div>
         )}
 
         {priceDifference > 0 && (
-          <div className="absolute bottom-3 left-3">
+          <div className="absolute bottom-3 left-3 z-10">
             <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
               <TrendingDown className="h-3 w-3" />
-              {labels.savings[language] || labels.savings.fr} {formatPrice(priceDifference)}
+              {getLabel('savings')} {formatPrice(priceDifference)}
             </div>
           </div>
         )}
 
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center z-20">
           <span className="opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0 bg-[#FB7701] text-white px-6 py-2 rounded-full text-xs font-bold shadow-xl">
-            {labels.compare[language] || labels.compare.fr}
+            {getLabel('compare')}
           </span>
         </div>
       </div>
@@ -90,10 +101,10 @@ export const ProductCard = ({ product }) => {
         <div className="bg-emerald-50 rounded-xl p-3 mb-4 border border-emerald-100 flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
-              {labels.bestPrice[language] || labels.bestPrice.fr}
+              {getLabel('bestPrice')}
             </span>
             <span className="text-xl font-black text-emerald-600">
-              {formatPrice(product.best_price)}
+              {formatPrice(product.best_price || cheapestPrice?.price)}
             </span>
           </div>
           {cheapestPrice && (
@@ -106,7 +117,7 @@ export const ProductCard = ({ product }) => {
         {/* Küçük platform karşılaştırması */}
         <div className="space-y-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
           {sortedPrices.slice(0, 3).map((p, idx) => (
-            <div key={idx} className="flex justify-between items-center text-[11px]">
+            <div key={idx} className="flex justify-between items-center text-[11px] border-b border-gray-50 pb-1 last:border-0">
               <span className="text-gray-500 font-medium">{getPlatformInfo(p.platform).icon} {p.platform}</span>
               <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
             </div>
