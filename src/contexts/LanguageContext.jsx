@@ -1,12 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
-// Tüm diller için eksik anahtarlar tamamlandı
+// Tüm diller için çeviri verileri
 const translations = {
   en: {
     search_placeholder: "Search products...",
     all_products: "All Products",
-    category_products: "Category Products", // Eklendi
-    go_to_store: "Go to Store", // Eklendi
+    category_products: "Category Products",
+    go_to_store: "Go to Store",
     admin: "Admin",
     categories: "Categories",
     hero_title: "Compare Prices.",
@@ -60,7 +60,6 @@ const translations = {
     dont_miss: "Don't Miss Better Prices!",
     compare_thousands: "Compare thousands of products with GLOBAL and find the best deals!",
   },
-  
   tr: {
     search_placeholder: "Ürün ara...",
     all_products: "Tüm Ürünler",
@@ -119,7 +118,6 @@ const translations = {
     dont_miss: "Daha İyi Fiyatları Kaçırma!",
     compare_thousands: "GLOBAL ile binlerce ürünü karşılaştır, en uygun fiyatı bul!",
   },
-  
   fr: {
     search_placeholder: "Rechercher des produits...",
     all_products: "Tous les Produits",
@@ -178,7 +176,6 @@ const translations = {
     dont_miss: "Ne Manquez Pas les Meilleurs Prix!",
     compare_thousands: "Comparez des milliers de produits avec GLOBAL et trouvez les meilleures offres!",
   },
-  
   de: {
     search_placeholder: "Produkte suchen...",
     all_products: "Alle Produkte",
@@ -237,7 +234,6 @@ const translations = {
     dont_miss: "Verpassen Sie Nicht die Besten Preise!",
     compare_thousands: "Vergleichen Sie tausende Produkte mit GLOBAL und finden Sie die besten Angebote!",
   },
-  
   it: {
     search_placeholder: "Cerca prodotti...",
     all_products: "Tutti i Prodotti",
@@ -290,13 +286,12 @@ const translations = {
     no_products_found: "Nessun prodotto trovato",
     try_adjusting_filters: "Prova a modificare i filtri",
     product_not_found: "Prodotto non trovato",
-    link_copied: "Link copiato!",
+    link_copied: "Link kopiert!",
     share: "Condividi",
     everything_here: "Tutto ciò di cui hai bisogno è qui",
     dont_miss: "Non Perdere i Prezzi Migliori!",
     compare_thousands: "Confronta migliaia di prodotti con GLOBAL e trova le migliori offerte!",
   },
-  
   es: {
     search_placeholder: "Buscar productos...",
     all_products: "Todos los Productos",
@@ -331,7 +326,7 @@ const translations = {
     in_stock: "En Stock",
     price_range: "Rango de Precio",
     platforms: "Plataformas",
-    filters: "Filtros",
+    filters: "Filtres",
     clear_filters: "Limpiar Filtros",
     sort_by: "Ordenar por",
     popular: "Popular",
@@ -355,7 +350,6 @@ const translations = {
     dont_miss: "¡No Te Pierdas los Mejores Precios!",
     compare_thousands: "¡Compara miles de productos con GLOBAL y encuentra las mejores ofertas!",
   },
-  
   nl: {
     search_placeholder: "Producten zoeken...",
     all_products: "Alle Producten",
@@ -439,8 +433,8 @@ export const useLanguage = () => {
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(() => {
     const saved = localStorage.getItem('global_language');
-    // Fransa yayını için varsayılanı 'fr' yapıyoruz
-    return saved && translations[saved] ? saved : 'fr'; 
+    // Önce kayıtlı dili, yoksa tarayıcı dilini, en son 'fr'yi seçer.
+    return (saved && translations[saved]) ? saved : 'fr'; 
   });
 
   useEffect(() => {
@@ -455,10 +449,12 @@ export const LanguageProvider = ({ children }) => {
   };
 
   const t = (key) => {
-    return translations[language]?.[key] || translations['fr']?.[key] || key;
+    // Mevcut dilde yoksa 'en' diline, o da yoksa anahtara döner.
+    return translations[language]?.[key] || translations['en']?.[key] || key;
   };
 
-  const availableLanguages = languageOptions.filter(opt => translations[opt.code]);
+  // 'r.map' hatasını önlemek için güvenli dizi oluşturma
+  const availableLanguages = languageOptions.filter(opt => translations[opt.code]) || [];
 
   return (
     <LanguageContext.Provider value={{ 
