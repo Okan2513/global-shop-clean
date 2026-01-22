@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, ChevronDown, ShoppingBag } from 'lucide-react';
+import { Search, Menu, X, Globe, ChevronDown, TrendingUp, Tag, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,9 +45,7 @@ export const Header = () => {
       setIsSearching(true);
       debounceRef.current = setTimeout(async () => {
         try {
-          const response = await axios.get(
-            `${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`
-          );
+          const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
           setSuggestions(response.data.suggestions || []);
           setDetectedCategory(response.data.detected_category);
           setShowSuggestions(true);
@@ -74,26 +72,13 @@ export const Header = () => {
     }
   };
 
-  // 🔧 KATEGORİ İSİMLERİNİ TEMİZLEYEN FONKSİYON
-  const cleanCategoryName = (key, fallback) => {
-    const translated = t(key);
-
-    // Eğer çeviri yoksa ve cat_xxx geliyorsa fallback kullan
-    if (!translated || translated === key) {
-      return fallback;
-    }
-
-    return translated;
-  };
-
-  // 🔧 KATEGORİLER (ARTIK cat_ GÖRÜNMEYECEK)
   const categories = [
-    { key: 'cat_electronics', fallback: 'Electronics', slug: 'electronics' },
-    { key: 'cat_fashion', fallback: 'Fashion', slug: 'fashion' },
-    { key: 'cat_home', fallback: 'Home & Garden', slug: 'home-garden' },
-    { key: 'cat_beauty', fallback: 'Beauty', slug: 'beauty' },
-    { key: 'cat_sports', fallback: 'Sports', slug: 'sports' },
-    { key: 'cat_bags', fallback: 'Bags', slug: 'bags' },
+    { name: t('cat_electronics') || 'Electronics', slug: 'electronics' },
+    { name: t('cat_fashion') || 'Fashion', slug: 'fashion' },
+    { name: t('cat_home') || 'Home & Garden', slug: 'home-garden' },
+    { name: t('cat_beauty') || 'Beauty', slug: 'beauty' },
+    { name: t('cat_sports') || 'Sports', slug: 'sports' },
+    { name: t('cat_bags') || 'Bags', slug: 'bags' },
   ];
 
   const getCurrentLanguageInfo = () => {
@@ -143,9 +128,16 @@ export const Header = () => {
     </div>
   );
 
+  // 🔧 TEK DOKUNUŞ: cat_ VARSA SADECE EKRANDA TEMİZLE
+  const renderCategoryName = (name) => {
+    if (name && name.startsWith('cat_')) {
+      return name.replace('cat_', '').replace('_', ' ');
+    }
+    return name;
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-
       {/* Üst Duyuru Barı */}
       <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
         <div className="max-w-7xl mx-auto px-4 text-center">
@@ -155,8 +147,6 @@ export const Header = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
-
-          {/* LOGO */}
           <Link to="/" className="flex-shrink-0">
             <h1 className="text-3xl font-bold font-['Outfit']">
               <span className="text-[#FB7701]">GLO</span>
@@ -164,14 +154,12 @@ export const Header = () => {
             </h1>
           </Link>
 
-          {/* MASAÜSTÜ ARAMA */}
           <div className="hidden md:flex flex-1 max-w-xl">
             <SearchInput />
           </div>
 
           <div className="flex items-center gap-3">
-
-            {/* DİL SEÇİCİ */}
+            {/* Dil Seçici */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 hover:bg-[#FB7701]/10">
@@ -195,38 +183,34 @@ export const Header = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* TÜM ÜRÜNLER */}
+            {/* Tüm Ürünler Butonu */}
             <Link to="/products" className="hidden md:block">
               <Button variant="ghost" className="hover:bg-[#FB7701]/10 hover:text-[#FB7701] font-bold text-gray-700">
                 {t('all_products')}
               </Button>
             </Link>
 
-            {/* MOBİL MENÜ */}
+            {/* Mobil Menü Butonu */}
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
-
           </div>
         </div>
 
-        {/* MOBİL ARAMA */}
+        {/* Mobil Arama Çubuğu */}
         <div className="md:hidden mt-4">
           <SearchInput isMobile={true} />
         </div>
       </div>
 
-      {/* MASAÜSTÜ KATEGORİLER */}
+      {/* Masaüstü Kategori Navigasyonu */}
       <nav className="hidden md:block border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
           <ul className="flex items-center gap-1 py-2 overflow-x-auto hide-scrollbar">
             {categories.map((cat) => (
               <li key={cat.slug}>
-                <Link
-                  to={`/products/${cat.slug}`}
-                  className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] hover:bg-[#FB7701]/5 rounded-full transition-colors whitespace-nowrap"
-                >
-                  {cleanCategoryName(cat.key, cat.fallback)}
+                <Link to={`/products/${cat.slug}`} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] hover:bg-[#FB7701]/5 rounded-full transition-colors whitespace-nowrap">
+                  {renderCategoryName(cat.name)}
                 </Link>
               </li>
             ))}
@@ -238,7 +222,6 @@ export const Header = () => {
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-[160px] bg-white z-[100] border-t overflow-y-auto animate-in slide-in-from-top duration-300">
           <div className="p-4 space-y-6">
-
             <div>
               <Link 
                 to="/products" 
@@ -261,15 +244,13 @@ export const Header = () => {
                   className="block p-4 text-gray-700 font-semibold border-b border-gray-50 active:bg-gray-50"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {cleanCategoryName(cat.key, cat.fallback)}
+                  {renderCategoryName(cat.name)}
                 </Link>
               ))}
             </div>
-
           </div>
         </div>
       )}
-
     </header>
   );
 };
