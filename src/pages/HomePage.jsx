@@ -90,6 +90,16 @@ export default function HomePage() {
                 </Button>
               </Link>
             </div>
+
+            {/* Right Side Logo */}
+            <div className="flex justify-center items-center">
+              <img 
+                src="/hero-logo.png"
+                alt="Global Compare & Save"
+                className="max-w-md w-full opacity-90"
+              />
+            </div>
+
           </div>
         </div>
       </section>
