@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, Globe, ChevronDown, TrendingUp, Tag, ShoppingBag } from 'lucide-react';
+import { Search, Menu, X, ChevronDown, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,7 +45,9 @@ export const Header = () => {
       setIsSearching(true);
       debounceRef.current = setTimeout(async () => {
         try {
-          const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
+          const response = await axios.get(
+            `${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`
+          );
           setSuggestions(response.data.suggestions || []);
           setDetectedCategory(response.data.detected_category);
           setShowSuggestions(true);
@@ -72,13 +74,26 @@ export const Header = () => {
     }
   };
 
+  // 🔧 KATEGORİ İSİMLERİNİ TEMİZLEYEN FONKSİYON
+  const cleanCategoryName = (key, fallback) => {
+    const translated = t(key);
+
+    // Eğer çeviri yoksa ve cat_xxx geliyorsa fallback kullan
+    if (!translated || translated === key) {
+      return fallback;
+    }
+
+    return translated;
+  };
+
+  // 🔧 KATEGORİLER (ARTIK cat_ GÖRÜNMEYECEK)
   const categories = [
-    { name: t('cat_electronics') || 'Electronics', slug: 'electronics' },
-    { name: t('cat_fashion') || 'Fashion', slug: 'fashion' },
-    { name: t('cat_home') || 'Home & Garden', slug: 'home-garden' },
-    { name: t('cat_beauty') || 'Beauty', slug: 'beauty' },
-    { name: t('cat_sports') || 'Sports', slug: 'sports' },
-    { name: t('cat_bags') || 'Bags', slug: 'bags' },
+    { key: 'cat_electronics', fallback: 'Electronics', slug: 'electronics' },
+    { key: 'cat_fashion', fallback: 'Fashion', slug: 'fashion' },
+    { key: 'cat_home', fallback: 'Home & Garden', slug: 'home-garden' },
+    { key: 'cat_beauty', fallback: 'Beauty', slug: 'beauty' },
+    { key: 'cat_sports', fallback: 'Sports', slug: 'sports' },
+    { key: 'cat_bags', fallback: 'Bags', slug: 'bags' },
   ];
 
   const getCurrentLanguageInfo = () => {
@@ -107,7 +122,6 @@ export const Header = () => {
         </div>
       </form>
 
-      {/* Arama Önerileri Paneli */}
       {showSuggestions && !isMobile && suggestions.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
           {suggestions.map((item, idx) => (
@@ -131,6 +145,7 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
+
       {/* Üst Duyuru Barı */}
       <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
         <div className="max-w-7xl mx-auto px-4 text-center">
@@ -140,6 +155,8 @@ export const Header = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
+
+          {/* LOGO */}
           <Link to="/" className="flex-shrink-0">
             <h1 className="text-3xl font-bold font-['Outfit']">
               <span className="text-[#FB7701]">GLO</span>
@@ -147,12 +164,14 @@ export const Header = () => {
             </h1>
           </Link>
 
+          {/* MASAÜSTÜ ARAMA */}
           <div className="hidden md:flex flex-1 max-w-xl">
             <SearchInput />
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Dil Seçici */}
+
+            {/* DİL SEÇİCİ */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 hover:bg-[#FB7701]/10">
@@ -176,34 +195,38 @@ export const Header = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Tüm Ürünler Butonu */}
+            {/* TÜM ÜRÜNLER */}
             <Link to="/products" className="hidden md:block">
               <Button variant="ghost" className="hover:bg-[#FB7701]/10 hover:text-[#FB7701] font-bold text-gray-700">
                 {t('all_products')}
               </Button>
             </Link>
 
-            {/* Mobil Menü Butonu */}
+            {/* MOBİL MENÜ */}
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
+
           </div>
         </div>
 
-        {/* Mobil Arama Çubuğu */}
+        {/* MOBİL ARAMA */}
         <div className="md:hidden mt-4">
           <SearchInput isMobile={true} />
         </div>
       </div>
 
-      {/* Masaüstü Kategori Navigasyonu */}
+      {/* MASAÜSTÜ KATEGORİLER */}
       <nav className="hidden md:block border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
           <ul className="flex items-center gap-1 py-2 overflow-x-auto hide-scrollbar">
             {categories.map((cat) => (
               <li key={cat.slug}>
-                <Link to={`/products/${cat.slug}`} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] hover:bg-[#FB7701]/5 rounded-full transition-colors whitespace-nowrap">
-                  {cat.name}
+                <Link
+                  to={`/products/${cat.slug}`}
+                  className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] hover:bg-[#FB7701]/5 rounded-full transition-colors whitespace-nowrap"
+                >
+                  {cleanCategoryName(cat.key, cat.fallback)}
                 </Link>
               </li>
             ))}
@@ -211,10 +234,11 @@ export const Header = () => {
         </div>
       </nav>
 
-      {/* MOBİL MENÜ İÇERİĞİ (Eklendi) */}
+      {/* MOBİL MENÜ İÇERİĞİ */}
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-[160px] bg-white z-[100] border-t overflow-y-auto animate-in slide-in-from-top duration-300">
           <div className="p-4 space-y-6">
+
             <div>
               <Link 
                 to="/products" 
@@ -237,13 +261,15 @@ export const Header = () => {
                   className="block p-4 text-gray-700 font-semibold border-b border-gray-50 active:bg-gray-50"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {cat.name}
+                  {cleanCategoryName(cat.key, cat.fallback)}
                 </Link>
               ))}
             </div>
+
           </div>
         </div>
       )}
+
     </header>
   );
 };
