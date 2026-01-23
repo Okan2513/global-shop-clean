@@ -5,21 +5,37 @@ import { Facebook, Twitter, Instagram, Mail } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+/* 🔥 BACKEND URL SİGORTASI (ENV ÇALIŞMAZSA OTOMATİK FALLBACK) */
+const BACKEND_URL =
+  process.env.REACT_APP_BACKEND_URL ||
+  window.location.origin.replace('www.', '');
+
+const API = `${BACKEND_URL}/api`;
 
 export const Footer = () => {
   const { t, language } = useLanguage();
-  const [siteSettings, setSiteSettings] = useState({ contact_email: null, site_name: 'GLOBAL' });
+  const [siteSettings, setSiteSettings] = useState({
+    contact_email: null,
+    site_name: 'GLOBAL',
+    footer_text: null,
+  });
 
   useEffect(() => {
     const fetchSiteSettings = async () => {
       try {
-        const response = await axios.get(`${API}/site-settings`);
-        setSiteSettings(response.data);
+        const response = await axios.get(`${API}/site-settings`, {
+          timeout: 8000,
+        });
+
+        /* 🔥 EMERGENT BACKEND FORMAT SİGORTASI */
+        const data = response.data?.data || response.data;
+
+        setSiteSettings(data);
       } catch (error) {
-        console.error('Failed to fetch site settings');
+        console.error('Failed to fetch site settings:', error);
       }
     };
+
     fetchSiteSettings();
   }, []);
 
@@ -32,7 +48,9 @@ export const Footer = () => {
             {language === 'tr' ? 'Fırsatları Kaçırmayın' : "Don't Miss the Deals"}
           </h3>
           <p className="font-medium">
-            {language === 'tr' ? 'Binlerce ürünü karşılaştırın, en iyi fiyatı bulun.' : 'Compare thousands of products and find the best price.'}
+            {language === 'tr'
+              ? 'Binlerce ürünü karşılaştırın, en iyi fiyatı bulun.'
+              : 'Compare thousands of products and find the best price.'}
           </p>
         </div>
       </div>
@@ -45,8 +63,8 @@ export const Footer = () => {
               {siteSettings?.site_name || 'GLOBAL'}
             </h2>
             <p className="text-gray-400 text-sm leading-relaxed">
-              {language === 'tr' 
-                ? 'AliExpress, Temu ve Shein fiyatlarını saniyeler içinde karşılaştırın.' 
+              {language === 'tr'
+                ? 'AliExpress, Temu ve Shein fiyatlarını saniyeler içinde karşılaştırın.'
                 : 'Compare prices from AliExpress, Temu, and Shein in seconds.'}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -102,8 +120,8 @@ export const Footer = () => {
             {siteSettings?.contact_email && (
               <div className="mt-4 flex items-center gap-2 text-gray-400 text-sm">
                 <Mail size={16} />
-                <a 
-                  href={`mailto:${siteSettings.contact_email}`} 
+                <a
+                  href={`mailto:${siteSettings.contact_email}`}
                   className="hover:text-[#FB7701]"
                 >
                   {siteSettings.contact_email}
@@ -126,8 +144,8 @@ export const Footer = () => {
             ©️ {new Date().getFullYear()} {siteSettings?.site_name || 'GLOBAL'}. {t('all_rights_reserved') || 'All Rights Reserved.'}
           </p>
           <p className="text-gray-600 text-[10px] italic max-w-md text-center md:text-right uppercase tracking-widest">
-            {language === 'tr' 
-              ? 'Bağımsız Karşılaştırma Platformu. Satın alımlardan komisyon kazanabiliriz.' 
+            {language === 'tr'
+              ? 'Bağımsız Karşılaştırma Platformu. Satın alımlardan komisyon kazanabiliriz.'
               : 'Independent Comparison Platform. We may earn commissions from purchases.'}
           </p>
         </div>
