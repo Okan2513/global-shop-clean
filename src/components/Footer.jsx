@@ -1,16 +1,11 @@
-import React, { useState, useEffect } from 'react'; // 'import' küçük harf yapıldı
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Facebook, Twitter, Instagram, Mail } from 'lucide-react';
-// Vercel hatası için alias yerine relative path kullanıldı
 import { useLanguage } from '../contexts/LanguageContext';
 import axios from 'axios';
 
-/* 🔥 BACKEND URL SİGORTASI (ENV ÇALIŞMAZSA OTOMATİK FALLBACK) */
-const BACKEND_URL =
-  process.env.REACT_APP_BACKEND_URL ||
-  window.location.origin.replace('www.', '');
-
-const API = `${BACKEND_URL}/api`;
+/* 🔥 GERÇEK BACKEND URL (SABİT VE GARANTİLİ) */
+const API = "https://deal-scout-53.preview.emergentagent.com/api";
 
 export const Footer = () => {
   const { t, language } = useLanguage();
@@ -24,10 +19,12 @@ export const Footer = () => {
     const fetchSiteSettings = async () => {
       try {
         const response = await axios.get(`${API}/site-settings`, {
-          timeout: 8000,
+          timeout: 10000,
         });
 
-        /* 🔥 EMERGENT BACKEND FORMAT SİGORTASI */
+        console.log("FOOTER SETTINGS RESPONSE:", response.data);
+
+        /* 🔥 EMERGENT FORMAT SİGORTASI */
         const data = response.data?.data || response.data;
 
         setSiteSettings(data);
@@ -107,7 +104,7 @@ export const Footer = () => {
             </ul>
           </div>
 
-          {/* 4. Sütun: Sosyal Medya */}
+          {/* 4. Sütun: Sosyal Medya + Email */}
           <div>
             <h4 className="text-lg font-bold mb-6 font-['Outfit']">{language === 'tr' ? 'Takip Et' : 'Follow Us'}</h4>
             <div className="flex gap-4">
