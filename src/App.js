@@ -42,8 +42,8 @@ class ErrorBoundary extends React.Component {
 function App() {
   return (
     <ErrorBoundary>
-      {/* 🔥 Router EN DIŞTA olacak (çok kritik) */}
-      <BrowserRouter>
+      {/* 🔥 Router EN DIŞTA ve basename EKLİ (Vercel + Admin fix) */}
+      <BrowserRouter basename="/">
         <LanguageProvider>
           <div className="App min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
             
