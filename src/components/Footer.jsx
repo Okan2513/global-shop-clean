@@ -42,7 +42,7 @@ export const Footer = () => {
           {/* 1. Sütun: Logo ve Platformlar */}
           <div className="space-y-6">
             <h2 className="text-3xl font-bold font-['Outfit'] tracking-tighter">
-              <span className="text-[#FB7701]">GLO</span>BAL
+              {siteSettings?.site_name || 'GLOBAL'}
             </h2>
             <p className="text-gray-400 text-sm leading-relaxed">
               {language === 'tr' 
@@ -97,13 +97,33 @@ export const Footer = () => {
               <a href="#" className="p-2 bg-gray-800 rounded-full hover:bg-[#FB7701] transition-all"><Twitter size={20} /></a>
               <a href="#" className="p-2 bg-gray-800 rounded-full hover:bg-[#FB7701] transition-all"><Instagram size={20} /></a>
             </div>
+
+            {/* Contact Email */}
+            {siteSettings?.contact_email && (
+              <div className="mt-4 flex items-center gap-2 text-gray-400 text-sm">
+                <Mail size={16} />
+                <a 
+                  href={`mailto:${siteSettings.contact_email}`} 
+                  className="hover:text-[#FB7701]"
+                >
+                  {siteSettings.contact_email}
+                </a>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Footer Text (Admin’den gelen) */}
+        {siteSettings?.footer_text && (
+          <p className="text-gray-400 text-xs mt-8 text-center italic">
+            {siteSettings.footer_text}
+          </p>
+        )}
 
         {/* Alt Bar */}
         <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-gray-500 text-xs font-medium">
-            © {new Date().getFullYear()} GLOBAL. {t('all_rights_reserved') || 'All Rights Reserved.'}
+            ©️ {new Date().getFullYear()} {siteSettings?.site_name || 'GLOBAL'}. {t('all_rights_reserved') || 'All Rights Reserved.'}
           </p>
           <p className="text-gray-600 text-[10px] italic max-w-md text-center md:text-right uppercase tracking-widest">
             {language === 'tr' 
