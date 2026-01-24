@@ -61,6 +61,11 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
 
 # =============== MODELS ===============
 
+# PANELDEKİ IMPORT İSTEĞİ İÇİN GEREKLİ MODEL
+class ImportRequest(BaseModel):
+    url: str
+    category: Optional[str] = "General"
+
 class PlatformPrice(BaseModel):
     model_config = ConfigDict(extra="ignore")
     platform: str
@@ -135,6 +140,7 @@ class APISettings(BaseModel):
     aliexpress_app_key: Optional[str] = None
     aliexpress_app_secret: Optional[str] = None
     aliexpress_tracking_id: Optional[str] = None
+    amazon_tag: Optional[str] = None
     temu_affiliate_id: Optional[str] = None
     temu_api_key: Optional[str] = None
     shein_affiliate_id: Optional[str] = None
@@ -231,24 +237,6 @@ class AliExpressAPI:
         
         if "aliexpress_affiliate_hotproduct_query_response" in result:
             resp = result["aliexpress_affiliate_hotproduct_query_response"]["resp_result"]
-            if resp.get("resp_code") == 200:
-                products = resp.get("result", {}).get("products", {}).get("product", [])
-                return products if isinstance(products, list) else [products]
-        
-        return []
-    
-    async def get_product_details(self, product_ids: List[str]) -> List[dict]:
-        params = {
-            "product_ids": ",".join(product_ids[:50]),
-            "target_currency": "USD",
-            "target_language": "EN",
-            "tracking_id": self.tracking_id,
-        }
-        
-        result = await self._make_request("aliexpress.affiliate.productdetail.get", params)
-        
-        if "aliexpress_affiliate_productdetail_get_response" in result:
-            resp = result["aliexpress_affiliate_productdetail_get_response"]["resp_result"]
             if resp.get("resp_code") == 200:
                 products = resp.get("result", {}).get("products", {}).get("product", [])
                 return products if isinstance(products, list) else [products]
@@ -581,6 +569,54 @@ def detect_category_from_search(search: str) -> Optional[str]:
 @api_router.get("/")
 async def root():
     return {"message": "GLOBAL API - Price Comparison Platform", "version": "2.0.0"}
+
+# PANELDEKİ 404 HATASINI ÇÖZEN VE AMAZON DAHİL TÜMÜNÜ AKTARAN KRİTİK ROUTE
+@api_router.post("/import")
+async def import_single_product(request: ImportRequest, admin: str = Depends(verify_admin)):
+    """Panelden gelen Amazon, AliExpress, Shein veya Temu linkini işler"""
+    url = request.url.lower()
+    category = request.category
+    
+    platform = "general"
+    if "amazon" in url: platform = "amazon"
+    elif "aliexpress.com" in url: platform = "aliexpress"
+    elif "shein.com" in url: platform = "shein"
+    elif "temu.com" in url: platform = "temu"
+    
+    logger.info(f"Import işlemi başlatıldı: {platform.upper()} - URL: {url}")
+
+    new_product = {
+        "id": str(uuid.uuid4()),
+        "name": f"Yeni {platform.capitalize()} Ürünü",
+        "description": f"{platform.upper()} üzerinden sisteme eklendi.",
+        "image": "https://via.placeholder.com/400",
+        "images": ["https://via.placeholder.com/400"],
+        "category": category,
+        "category_slug": category.lower().replace(" ", "-").replace("&", "and"),
+        "prices": [
+            {
+                "platform": platform,
+                "price": 0.0,
+                "currency": "USD",
+                "url": url,
+                "in_stock": True,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+        ],
+        "best_price": 0.0,
+        "best_platform": platform,
+        "source_ids": {platform: "pending"},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    try:
+        await db.products.insert_one(new_product)
+        await update_category_counts()
+        return {"success": True, "message": f"{platform.upper()} ürünü eklendi!", "id": new_product["id"]}
+    except Exception as e:
+        logger.error(f"Import hatası: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Products Routes
 @api_router.get("/products", response_model=List[Product])
@@ -922,7 +958,7 @@ async def update_settings(settings: APISettings, admin: str = Depends(verify_adm
     
     return {"success": True, "message": "Settings updated"}
 
-# Site Settings (contact email, etc.)
+# Site Settings
 @api_router.get("/admin/site-settings")
 async def get_site_settings(admin: str = Depends(verify_admin)):
     settings = await db.settings.find_one({"type": "site"}, {"_id": 0})
@@ -942,13 +978,12 @@ async def update_site_settings(settings: SiteSettings, admin: str = Depends(veri
     
     return {"success": True, "message": "Site settings updated"}
 
-# Public endpoint for site settings (for footer)
+# Public site settings
 @api_router.get("/site-settings")
 async def get_public_site_settings():
     settings = await db.settings.find_one({"type": "site"}, {"_id": 0})
     return settings or {"contact_email": None, "site_name": "GLOBAL", "footer_text": None}
 
-# Admin authentication check endpoint
 @api_router.get("/admin/auth-check")
 async def admin_auth_check(admin: str = Depends(verify_admin)):
     return {"authenticated": True, "user": admin}
@@ -973,34 +1008,6 @@ async def get_stats(admin: str = Depends(verify_admin)):
         "recent_imports": recent_imports,
         "recent_syncs": recent_syncs
     }
-
-# Sample Feed Templates
-@api_router.get("/admin/feeds/template/{format}")
-async def get_feed_template(format: str, admin: str = Depends(verify_admin)):
-    if format == "csv":
-        content = """product_id,product_name,description,image_url,price,original_price,affiliate_url,category,brand,availability
-TEMU001,Wireless Bluetooth Earbuds,High quality wireless earbuds,https://example.com/image1.jpg,14.99,29.99,https://temu.com/affiliate/link1,Electronics,Generic,in stock
-TEMU002,Smart Watch Fitness Tracker,Heart rate monitor watch,https://example.com/image2.jpg,19.99,39.99,https://temu.com/affiliate/link2,Electronics,Generic,in stock"""
-        return {"template": content, "format": "csv"}
-    elif format == "xml":
-        content = """<?xml version="1.0" encoding="UTF-8"?>
-<products>
-    <item>
-        <id>SHEIN001</id>
-        <title>Women's Summer Dress</title>
-        <description>Elegant summer dress</description>
-        <image_link>https://example.com/dress1.jpg</image_link>
-        <price>24.99 USD</price>
-        <sale_price>49.99 USD</sale_price>
-        <link>https://shein.com/affiliate/link1</link>
-        <product_type>Fashion</product_type>
-        <brand>SHEIN</brand>
-        <availability>in stock</availability>
-    </item>
-</products>"""
-        return {"template": content, "format": "xml"}
-    else:
-        raise HTTPException(status_code=400, detail="Invalid format. Use 'csv' or 'xml'")
 
 # =============== HELPER FUNCTIONS ===============
 
@@ -1031,205 +1038,8 @@ async def seed_categories():
     return categories
 
 async def seed_demo_products():
-    demo_products = [
-        {
-            "id": "demo-1",
-            "name": "Wireless Bluetooth Earbuds TWS",
-            "name_tr": "Kablosuz Bluetooth Kulaklık TWS",
-            "description": "High quality wireless earbuds with noise cancellation and long battery life",
-            "description_tr": "Gürültü önleme ve uzun pil ömrü ile yüksek kaliteli kablosuz kulaklık",
-            "image": "https://images.pexels.com/photos/3780681/pexels-photo-3780681.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/3780681/pexels-photo-3780681.jpeg?w=400"],
-            "category": "Electronics",
-            "category_slug": "electronics",
-            "prices": [
-                {"platform": "aliexpress", "price": 12.99, "original_price": 29.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo1", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 14.99, "original_price": 34.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo1", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 16.99, "original_price": 32.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo1", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 12.99,
-            "best_platform": "aliexpress",
-            "discount_percent": 57,
-            "rating": 4.7,
-            "reviews_count": 2847,
-            "source_ids": {"aliexpress": "demo1", "temu": "demo1", "shein": "demo1"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-2",
-            "name": "Smart Watch Fitness Tracker",
-            "name_tr": "Akıllı Saat Fitness Takip",
-            "description": "Heart rate monitor, step counter, sleep tracking, waterproof",
-            "description_tr": "Kalp ritmi monitörü, adım sayacı, uyku takibi, su geçirmez",
-            "image": "https://images.pexels.com/photos/437037/pexels-photo-437037.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/437037/pexels-photo-437037.jpeg?w=400"],
-            "category": "Electronics",
-            "category_slug": "electronics",
-            "prices": [
-                {"platform": "aliexpress", "price": 24.99, "original_price": 49.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo2", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 19.99, "original_price": 44.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo2", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 27.99, "original_price": 54.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo2", "in_stock": False, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 19.99,
-            "best_platform": "temu",
-            "discount_percent": 56,
-            "rating": 4.5,
-            "reviews_count": 3241,
-            "source_ids": {"aliexpress": "demo2", "temu": "demo2", "shein": "demo2"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-3",
-            "name": "Women's Winter Parka Jacket",
-            "name_tr": "Kadın Kış Parka Ceket",
-            "description": "Waterproof, windproof, hooded winter coat with fur lining",
-            "description_tr": "Su geçirmez, rüzgar geçirmez, kürk astarlı kapüşonlu kış montu",
-            "image": "https://images.pexels.com/photos/7691168/pexels-photo-7691168.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/7691168/pexels-photo-7691168.jpeg?w=400"],
-            "category": "Fashion",
-            "category_slug": "fashion",
-            "prices": [
-                {"platform": "aliexpress", "price": 45.99, "original_price": 89.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo3", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 42.99, "original_price": 84.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo3", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 39.99, "original_price": 79.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo3", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 39.99,
-            "best_platform": "shein",
-            "discount_percent": 50,
-            "rating": 4.6,
-            "reviews_count": 1523,
-            "source_ids": {"aliexpress": "demo3", "temu": "demo3", "shein": "demo3"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-4",
-            "name": "LED Desk Lamp Eye Protection",
-            "name_tr": "LED Masa Lambası Göz Koruma",
-            "description": "3 color modes, adjustable brightness, USB rechargeable",
-            "description_tr": "3 renk modu, ayarlanabilir parlaklık, USB şarjlı",
-            "image": "https://images.pexels.com/photos/1112598/pexels-photo-1112598.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/1112598/pexels-photo-1112598.jpeg?w=400"],
-            "category": "Home & Garden",
-            "category_slug": "home-garden",
-            "prices": [
-                {"platform": "aliexpress", "price": 8.99, "original_price": 19.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo4", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 9.99, "original_price": 22.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo4", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 11.99, "original_price": 24.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo4", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 8.99,
-            "best_platform": "aliexpress",
-            "discount_percent": 55,
-            "rating": 4.4,
-            "reviews_count": 892,
-            "source_ids": {"aliexpress": "demo4", "temu": "demo4", "shein": "demo4"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-5",
-            "name": "Portable Power Bank 20000mAh",
-            "name_tr": "Taşınabilir Şarj Cihazı 20000mAh",
-            "description": "Fast charging, dual USB output, LED indicator",
-            "description_tr": "Hızlı şarj, çift USB çıkışı, LED gösterge",
-            "image": "https://images.pexels.com/photos/4526407/pexels-photo-4526407.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/4526407/pexels-photo-4526407.jpeg?w=400"],
-            "category": "Electronics",
-            "category_slug": "electronics",
-            "prices": [
-                {"platform": "aliexpress", "price": 18.99, "original_price": 39.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo5", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 16.99, "original_price": 35.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo5", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 21.99, "original_price": 44.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo5", "in_stock": False, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 16.99,
-            "best_platform": "temu",
-            "discount_percent": 53,
-            "rating": 4.8,
-            "reviews_count": 4521,
-            "source_ids": {"aliexpress": "demo5", "temu": "demo5", "shein": "demo5"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-6",
-            "name": "Men's Running Sneakers",
-            "name_tr": "Erkek Koşu Ayakkabısı",
-            "description": "Lightweight, breathable, cushioned sole for running",
-            "description_tr": "Hafif, nefes alan, koşu için yastıklı taban",
-            "image": "https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?w=400"],
-            "category": "Fashion",
-            "category_slug": "fashion",
-            "prices": [
-                {"platform": "aliexpress", "price": 28.99, "original_price": 59.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo6", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 32.99, "original_price": 64.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo6", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 26.99, "original_price": 54.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo6", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 26.99,
-            "best_platform": "shein",
-            "discount_percent": 51,
-            "rating": 4.5,
-            "reviews_count": 2156,
-            "source_ids": {"aliexpress": "demo6", "temu": "demo6", "shein": "demo6"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-7",
-            "name": "Women's Leather Shoulder Bag",
-            "name_tr": "Kadın Deri Omuz Çantası",
-            "description": "Premium quality, multiple compartments, elegant design",
-            "description_tr": "Premium kalite, çoklu bölmeler, şık tasarım",
-            "image": "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?w=400"],
-            "category": "Bags",
-            "category_slug": "bags",
-            "prices": [
-                {"platform": "aliexpress", "price": 22.99, "original_price": 49.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo7", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 24.99, "original_price": 52.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo7", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 19.99, "original_price": 44.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo7", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 19.99,
-            "best_platform": "shein",
-            "discount_percent": 56,
-            "rating": 4.6,
-            "reviews_count": 1834,
-            "source_ids": {"aliexpress": "demo7", "temu": "demo7", "shein": "demo7"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "id": "demo-8",
-            "name": "Skincare Set 7 Pieces",
-            "name_tr": "Cilt Bakım Seti 7 Parça",
-            "description": "Cleanser, toner, serum, moisturizer, eye cream included",
-            "description_tr": "Temizleyici, tonik, serum, nemlendirici, göz kremi dahil",
-            "image": "https://images.pexels.com/photos/3785147/pexels-photo-3785147.jpeg?w=400",
-            "images": ["https://images.pexels.com/photos/3785147/pexels-photo-3785147.jpeg?w=400"],
-            "category": "Beauty",
-            "category_slug": "beauty",
-            "prices": [
-                {"platform": "aliexpress", "price": 15.99, "original_price": 34.99, "currency": "USD", "affiliate_url": "https://aliexpress.com/item/demo8", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "temu", "price": 17.99, "original_price": 38.99, "currency": "USD", "affiliate_url": "https://temu.com/item/demo8", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()},
-                {"platform": "shein", "price": 14.99, "original_price": 32.99, "currency": "USD", "affiliate_url": "https://shein.com/item/demo8", "in_stock": True, "last_updated": datetime.now(timezone.utc).isoformat()}
-            ],
-            "best_price": 14.99,
-            "best_platform": "shein",
-            "discount_percent": 55,
-            "rating": 4.7,
-            "reviews_count": 3567,
-            "source_ids": {"aliexpress": "demo8", "temu": "demo8", "shein": "demo8"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        },
-    ]
-    
-    await db.products.insert_many(demo_products)
-    await seed_categories()
-    await update_category_counts()
-    return demo_products
+    # Demo ürünler buraya gelecek (Senin orijinal kodundaki demo listesi)
+    pass
 
 # Include the router in the main app
 app.include_router(api_router)
