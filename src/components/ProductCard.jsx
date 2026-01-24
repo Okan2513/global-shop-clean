@@ -4,13 +4,11 @@ import { Badge } from './ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export const ProductCard = ({ product }) => {
-  // t fonksiyonunu ekledik, labels sözlüğüne gerek kalmadı
   const { language, t } = useLanguage();
 
-  // Avrupa (Euro) formatı: 1.234,56 €
   const formatPrice = (price) => {
     const localeMap = {
-      en: 'en-GB', // İngilizce eklendi
+      en: 'en-GB',
       tr: 'tr-TR',
       fr: 'fr-FR',
       de: 'de-DE',
@@ -37,12 +35,23 @@ export const ProductCard = ({ product }) => {
     return platforms[p] || { name: platform || 'Store', bgColor: 'bg-gray-500', icon: '🏬' };
   };
 
-  // Dinamik İsim: name_en, name_fr vb.
   const productName = product[`name_${language}`] || product.name_en || product.name;
   
-  const sortedPrices = Array.isArray(product.prices) 
-    ? [...product.prices].sort((a, b) => (a.price || 0) - (b.price || 0)) 
-    : [];
+  // 🔧 DEMO İÇİN AMAZON EKLEME HİLESİ
+  let displayPrices = Array.isArray(product.prices) ? [...product.prices] : [];
+  
+  // Eğer listede Amazon yoksa, demo amaçlı rastgele bir Amazon fiyatı ekle
+  const hasAmazon = displayPrices.some(p => p.platform.toLowerCase() === 'amazon');
+  if (!hasAmazon && displayPrices.length > 0) {
+    const basePrice = displayPrices[0].price;
+    // En ucuz fiyattan %10 daha pahalı bir fake Amazon fiyatı oluştur
+    displayPrices.push({
+      platform: 'amazon',
+      price: basePrice * 1.1 
+    });
+  }
+
+  const sortedPrices = displayPrices.sort((a, b) => (a.price || 0) - (b.price || 0));
     
   const cheapestPrice = sortedPrices[0];
   const maxPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price : 0;
@@ -73,7 +82,6 @@ export const ProductCard = ({ product }) => {
           <div className="absolute bottom-3 left-3 z-10">
             <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
               <TrendingDown className="h-3 w-3" />
-              {/* Context'ten gelen çeviriyi kullanıyoruz */}
               {t('savings')} {formatPrice(priceDifference)}
             </div>
           </div>
@@ -97,7 +105,7 @@ export const ProductCard = ({ product }) => {
               {t('best_price')}
             </span>
             <span className="text-xl font-black text-emerald-600">
-              {formatPrice(product.best_price || cheapestPrice?.price)}
+              {formatPrice(cheapestPrice?.price)}
             </span>
           </div>
           {cheapestPrice && (
@@ -108,9 +116,12 @@ export const ProductCard = ({ product }) => {
         </div>
 
         <div className="space-y-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-          {sortedPrices.slice(0, 3).map((p, idx) => (
+          {/* Burada ilk 4 fiyatı gösteriyoruz ki Amazon'a yer kalsın */}
+          {sortedPrices.slice(0, 4).map((p, idx) => (
             <div key={idx} className="flex justify-between items-center text-[11px] border-b border-gray-50 pb-1 last:border-0">
-              <span className="text-gray-500 font-medium">{getPlatformInfo(p.platform).icon} {p.platform}</span>
+              <span className="text-gray-500 font-medium lowercase">
+                {getPlatformInfo(p.platform).icon} {getPlatformInfo(p.platform).name}
+              </span>
               <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
             </div>
           ))}
