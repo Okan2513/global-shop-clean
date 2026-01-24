@@ -6,6 +6,20 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+/* 🔐 ADMIN BASIC AUTH – KALICI ÇÖZÜM */
+const ADMIN_USER = "globaladmin";
+const ADMIN_PASS = "Gl0b4l$ecure2024!";
+const AUTH_HEADER = "Basic " + btoa(`${ADMIN_USER}:${ADMIN_PASS}`);
+
+/* Axios instance – bütün admin istekleri otomatik auth’lu gider */
+const adminApi = axios.create({
+  baseURL: API,
+  headers: {
+    "Authorization": AUTH_HEADER,
+    "Content-Type": "application/json"
+  }
+});
+
 export default function AdminPage() {
   const { language } = useLanguage();
 
@@ -19,7 +33,7 @@ export default function AdminPage() {
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
     try {
-      const res = await axios.get(`${API}/admin/stats`);
+      const res = await adminApi.get(`/admin/stats`);
       setStats(res.data);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -31,7 +45,7 @@ export default function AdminPage() {
   const fetchSettings = useCallback(async () => {
     setLoadingSettings(true);
     try {
-      const res = await axios.get(`${API}/admin/settings`);
+      const res = await adminApi.get(`/admin/settings`);
       setSettings(res.data);
     } catch (error) {
       console.error('Failed to fetch settings:', error);
@@ -54,7 +68,7 @@ export default function AdminPage() {
 
   const handleSave = async () => {
     try {
-      await axios.post(`${API}/admin/settings`, settings);
+      await adminApi.post(`/admin/settings`, settings);
       alert(language === 'tr' ? 'Ayarlar kaydedildi' : 'Settings saved');
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -82,10 +96,10 @@ export default function AdminPage() {
           </div>
         ) : stats ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Products" value={stats.products} />
-            <StatCard label="Categories" value={stats.categories} />
-            <StatCard label="Platforms" value={stats.platforms} />
-            <StatCard label="Users" value={stats.users} />
+            <StatCard label="Products" value={stats.total_products} />
+            <StatCard label="Categories" value={Object.keys(stats.products_by_platform || {}).length} />
+            <StatCard label="Platforms" value={Object.keys(stats.products_by_platform || {}).length} />
+            <StatCard label="Users" value={0} />
           </div>
         ) : (
           <p className="text-gray-500">
@@ -108,16 +122,16 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl shadow p-6 space-y-4">
             <SettingRow
               label="AliExpress API Key"
-              value={settings.aliexpress_key}
+              value={settings.aliexpress_app_key}
               onChange={(v) =>
-                setSettings((s) => ({ ...s, aliexpress_key: v }))
+                setSettings((s) => ({ ...s, aliexpress_app_key: v }))
               }
             />
             <SettingRow
               label="AliExpress Secret"
-              value={settings.aliexpress_secret}
+              value={settings.aliexpress_app_secret}
               onChange={(v) =>
-                setSettings((s) => ({ ...s, aliexpress_secret: v }))
+                setSettings((s) => ({ ...s, aliexpress_app_secret: v }))
               }
             />
 
