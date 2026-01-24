@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, Globe, ChevronDown, TrendingUp, Tag, ShoppingBag } from 'lucide-react';
+import { Search, Menu, X, ChevronDown, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -14,84 +14,28 @@ import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const Header = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [detectedCategory, setDetectedCategory] = useState(null);
-  const [isSearching, setIsSearching] = useState(false);
+// 🔧 HATAYI ÇÖZEN KISIM: Arama kutusu artık ana Header'ın dışında tanımlandı.
+// Böylece her harf yazdığında tüm sayfa değil, sadece input güncelleniyor.
+const SearchInput = memo(({ 
+  searchQuery, 
+  setSearchQuery, 
+  handleSearch, 
+  showSuggestions, 
+  setShowSuggestions, 
+  suggestions, 
+  navigate, 
+  t, 
+  isMobile = false 
+}) => {
   const searchRef = useRef(null);
-  const debounceRef = useRef(null);
-  const { language, setLanguage, t, availableLanguages } = useLanguage();
-  const navigate = useNavigate();
 
-  // Dışarı tıklayınca önerileri kapat
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Akıllı Arama Önerileri
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (searchQuery.trim().length >= 2) {
-      setIsSearching(true);
-      debounceRef.current = setTimeout(async () => {
-        try {
-          const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
-          setSuggestions(response.data.suggestions || []);
-          setDetectedCategory(response.data.detected_category);
-          setShowSuggestions(true);
-        } catch (error) {
-          console.error('Failed to fetch suggestions:', error);
-          setSuggestions([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 200);
-    } else {
-      setSuggestions([]);
-      setDetectedCategory(null);
-      setShowSuggestions(false);
-    }
-  }, [searchQuery, language]);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      setShowSuggestions(false);
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
-    }
-  };
-
-  const categories = [
-    { name: t('cat_electronics') || 'Electronics', slug: 'electronics' },
-    { name: t('cat_fashion') || 'Fashion', slug: 'fashion' },
-    { name: t('cat_home') || 'Home & Garden', slug: 'home-garden' },
-    { name: t('cat_beauty') || 'Beauty', slug: 'beauty' },
-    { name: t('cat_sports') || 'Sports', slug: 'sports' },
-    { name: t('cat_bags') || 'Bags', slug: 'bags' },
-  ];
-
-  const getCurrentLanguageInfo = () => {
-    return availableLanguages.find(l => l.code === language) || availableLanguages[0];
-  };
-
-  const SearchInput = ({ isMobile = false }) => (
+  return (
     <div ref={!isMobile ? searchRef : null} className="relative w-full">
       <form onSubmit={handleSearch}>
         <div className="relative">
           <Input
             type="text"
-            placeholder={t('search_placeholder')}
+            placeholder={t('search_placeholder') || 'Ürün ara...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchQuery.length >= 2 && setShowSuggestions(true)}
@@ -127,8 +71,54 @@ export const Header = () => {
       )}
     </div>
   );
+});
 
-  // 🔧 TEK DOKUNUŞ: cat_ VARSA SADECE EKRANDA TEMİZLE
+export const Header = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const { language, setLanguage, t, availableLanguages } = useLanguage();
+  const navigate = useNavigate();
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (searchQuery.trim().length >= 2) {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
+          setSuggestions(response.data.suggestions || []);
+          setShowSuggestions(true);
+        } catch (error) {
+          setSuggestions([]);
+        }
+      }, 200);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchQuery, language]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setShowSuggestions(false);
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+    }
+  };
+
+  const categories = [
+    { name: t('cat_electronics') || 'Electronics', slug: 'electronics' },
+    { name: t('cat_fashion') || 'Fashion', slug: 'fashion' },
+    { name: t('cat_home') || 'Home & Garden', slug: 'home-garden' },
+    { name: t('cat_beauty') || 'Beauty', slug: 'beauty' },
+    { name: t('cat_sports') || 'Sports', slug: 'sports' },
+    { name: t('cat_bags') || 'Bags', slug: 'bags' },
+  ];
+
   const renderCategoryName = (name) => {
     if (name && name.startsWith('cat_')) {
       return name.replace('cat_', '').replace('_', ' ');
@@ -138,10 +128,9 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      {/* Üst Duyuru Barı */}
       <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-sm font-medium">🎉 {t('hero_description')}</p>
+          <p className="text-sm font-medium">🎉 Amazon, AliExpress, Temu ve Shein Fiyatlarını Karşılaştırın!</p>
         </div>
       </div>
 
@@ -155,61 +144,67 @@ export const Header = () => {
           </Link>
 
           <div className="hidden md:flex flex-1 max-w-xl">
-            <SearchInput />
+            <SearchInput 
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              handleSearch={handleSearch}
+              showSuggestions={showSuggestions}
+              setShowSuggestions={setShowSuggestions}
+              suggestions={suggestions}
+              navigate={navigate}
+              t={t}
+            />
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Dil Seçici */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 hover:bg-[#FB7701]/10">
-                  <span className="text-lg">{getCurrentLanguageInfo().flag}</span>
+                  <span className="text-lg">{availableLanguages.find(l => l.code === language)?.flag || '🌐'}</span>
                   <span className="hidden sm:inline uppercase font-bold text-gray-700">{language}</span>
                   <ChevronDown className="h-3 w-3 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 bg-white border-gray-100 shadow-xl">
                 {availableLanguages.map((lang) => (
-                  <DropdownMenuItem 
-                    key={lang.code}
-                    onClick={() => setLanguage(lang.code)} 
-                    className={`flex items-center gap-3 cursor-pointer p-3 ${language === lang.code ? 'bg-orange-50 text-[#FB7701]' : ''}`}
-                  >
-                    <span className="text-lg">{lang.flag}</span>
-                    <span className="flex-1 font-medium">{lang.name}</span>
-                    {language === lang.code && <span className="text-[#FB7701]">✓</span>}
+                  <DropdownMenuItem key={lang.code} onClick={() => setLanguage(lang.code)} className="cursor-pointer">
+                    {lang.flag} {lang.name}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Tüm Ürünler Butonu */}
             <Link to="/products" className="hidden md:block">
-              <Button variant="ghost" className="hover:bg-[#FB7701]/10 hover:text-[#FB7701] font-bold text-gray-700">
-                {t('all_products')}
-              </Button>
+              <Button variant="ghost" className="font-bold text-gray-700">{t('all_products')}</Button>
             </Link>
 
-            {/* Mobil Menü Butonu */}
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
           </div>
         </div>
 
-        {/* Mobil Arama Çubuğu */}
         <div className="md:hidden mt-4">
-          <SearchInput isMobile={true} />
+          <SearchInput 
+            isMobile={true}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            handleSearch={handleSearch}
+            showSuggestions={showSuggestions}
+            setShowSuggestions={setShowSuggestions}
+            suggestions={suggestions}
+            navigate={navigate}
+            t={t}
+          />
         </div>
       </div>
 
-      {/* Masaüstü Kategori Navigasyonu */}
       <nav className="hidden md:block border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
           <ul className="flex items-center gap-1 py-2 overflow-x-auto hide-scrollbar">
             {categories.map((cat) => (
               <li key={cat.slug}>
-                <Link to={`/products/${cat.slug}`} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] hover:bg-[#FB7701]/5 rounded-full transition-colors whitespace-nowrap">
+                <Link to={`/products/${cat.slug}`} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] rounded-full transition-colors">
                   {renderCategoryName(cat.name)}
                 </Link>
               </li>
@@ -218,36 +213,18 @@ export const Header = () => {
         </div>
       </nav>
 
-      {/* MOBİL MENÜ İÇERİĞİ */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[160px] bg-white z-[100] border-t overflow-y-auto animate-in slide-in-from-top duration-300">
-          <div className="p-4 space-y-6">
-            <div>
-              <Link 
-                to="/products" 
-                className="flex items-center gap-3 p-4 bg-orange-50 rounded-2xl text-[#FB7701] font-bold"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <ShoppingBag className="h-5 w-5" />
-                {t('all_products')}
+        <div className="md:hidden fixed inset-0 top-[160px] bg-white z-[100] border-t p-4 space-y-6">
+          <Link to="/products" className="flex items-center gap-3 p-4 bg-orange-50 rounded-2xl text-[#FB7701] font-bold" onClick={() => setMobileMenuOpen(false)}>
+            <ShoppingBag className="h-5 w-5" /> {t('all_products')}
+          </Link>
+          <div className="space-y-1">
+            <h3 className="px-4 text-xs font-black text-gray-400 uppercase mb-2">{t('categories')}</h3>
+            {categories.map((cat) => (
+              <Link key={cat.slug} to={`/products/${cat.slug}`} className="block p-4 text-gray-700 font-semibold border-b border-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                {renderCategoryName(cat.name)}
               </Link>
-            </div>
-            
-            <div className="space-y-1">
-              <h3 className="px-4 text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                {t('categories')}
-              </h3>
-              {categories.map((cat) => (
-                <Link
-                  key={cat.slug}
-                  to={`/products/${cat.slug}`}
-                  className="block p-4 text-gray-700 font-semibold border-b border-gray-50 active:bg-gray-50"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {renderCategoryName(cat.name)}
-                </Link>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
       )}
