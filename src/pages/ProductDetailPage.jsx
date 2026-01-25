@@ -15,7 +15,6 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fiyatı her dile uygun Euro formatına çevirir
   const formatPrice = (price) => {
     return new Intl.NumberFormat(language === 'tr' ? 'tr-TR' : 'fr-FR', {
       style: 'currency',
@@ -23,7 +22,6 @@ export default function ProductDetailPage() {
     }).format(price || 0);
   };
 
-  // Dinamik Buton Metinleri (7 Dil)
   const getButtonText = () => {
     const texts = {
       tr: 'Mağazaya Git',
@@ -79,8 +77,20 @@ export default function ProductDetailPage() {
     );
   }
 
-  // Butonun gideceği link (Hata korumalı: hangisi varsa ona gider)
-  const storeUrl = product.best_offer_url || product.affiliate_link || product.url;
+  // 🔥 GERÇEK BACKEND REDIRECT – PLATFORM + PRODUCT ID
+  const handleGoToStore = () => {
+    const platform = product.best_platform;
+
+    if (!platform) {
+      alert("Platform bulunamadı");
+      return;
+    }
+
+    window.open(
+      `${process.env.REACT_APP_BACKEND_URL}/api/redirect/${product.id}/${platform}`,
+      "_blank"
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-6 min-h-screen">
@@ -121,17 +131,14 @@ export default function ProductDetailPage() {
           </div>
 
           <div className="space-y-4">
-            <a
-              href={storeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full"
+            {/* 🔥 ARTIK HREF YOK – BACKEND REDIRECT VAR */}
+            <Button
+              onClick={handleGoToStore}
+              className="w-full bg-[#FB7701] hover:bg-[#E66A00] text-white py-8 rounded-2xl text-xl font-bold shadow-lg shadow-orange-200 transition-all flex items-center justify-center gap-3"
             >
-              <Button className="w-full bg-[#FB7701] hover:bg-[#E66A00] text-white py-8 rounded-2xl text-xl font-bold shadow-lg shadow-orange-200 transition-all flex items-center justify-center gap-3">
-                {getButtonText()}
-                <ExternalLink className="h-6 w-6" />
-              </Button>
-            </a>
+              {getButtonText()}
+              <ExternalLink className="h-6 w-6" />
+            </Button>
             
             <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
               <ShieldCheck className="h-4 w-4" />
