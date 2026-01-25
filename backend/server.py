@@ -768,5 +768,6 @@ async def shutdown_db_client():
     client.close()
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port_str = os.environ.get("PORT")
+    port = int(port_str) if port_str and port_str.isdigit() else 8000
     uvicorn.run(app, host="0.0.0.0", port=port)
