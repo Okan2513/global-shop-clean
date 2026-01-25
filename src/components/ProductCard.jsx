@@ -3,8 +3,6 @@ import { TrendingDown } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 
-const API_URL = "https://global-shop-clean.onrender.com"; // BACKEND URL
-
 export const ProductCard = ({ product }) => {
   const { language, t } = useLanguage();
 
@@ -39,23 +37,28 @@ export const ProductCard = ({ product }) => {
 
   const productName = product[`name_${language}`] || product.name_tr || product.name;
 
-  // 🔥 GERÇEK FİYATLAR – DEMO / SAHTE AMAZON TAMAMEN SİLİNDİ
-  let displayPrices = Array.isArray(product.prices) ? [...product.prices] : [];
+  // 🔥 GERÇEK FİYATLAR
+  const displayPrices = Array.isArray(product.prices) ? [...product.prices] : [];
+  if (displayPrices.length === 0) return null;
 
   const sortedPrices = displayPrices.sort((a, b) => (a.price || 0) - (b.price || 0));
   const cheapestPrice = sortedPrices[0];
   const maxPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price : 0;
   const priceDifference = maxPrice > 0 ? maxPrice - (cheapestPrice?.price || 0) : 0;
 
-  // 🔥 MAĞAZAYA GİT → BACKEND AFFILIATE REDIRECT
-  const handleGoToStore = (e, platform) => {
+  // 🔥 MAĞAZAYA GİT → DİREKT AFFILIATE URL
+  const goToStore = (e, priceObj) => {
     e.preventDefault();
     e.stopPropagation();
 
-    window.open(
-      `${API_URL}/api/redirect/${product.id}/${platform}`,
-      "_blank"
-    );
+    const link = priceObj.affiliate_url || priceObj.url;
+
+    if (!link) {
+      alert("Bu ürün için mağaza linki bulunamadı.");
+      return;
+    }
+
+    window.open(link, "_blank");
   };
 
   return (
@@ -111,9 +114,8 @@ export const ProductCard = ({ product }) => {
           )}
         </div>
 
-        {/* FİYAT LİSTESİ + MAĞAZAYA GİT BUTONLARI */}
+        {/* 🔥 FİYATLAR + MAĞAZAYA GİT */}
         <div className="space-y-2">
-
           {sortedPrices.map((p, idx) => (
             <div key={idx} className="flex justify-between items-center text-[11px] border-b border-gray-50 pb-1 last:border-0">
               <span className="text-gray-600 font-medium lowercase">
@@ -123,9 +125,8 @@ export const ProductCard = ({ product }) => {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
 
-                {/* 🔥 GERÇEK AFFILIATE YÖNLENDİRME */}
                 <button
-                  onClick={(e) => handleGoToStore(e, p.platform)}
+                  onClick={(e) => goToStore(e, p)}
                   className="bg-[#FB7701] hover:bg-orange-600 text-white px-3 py-1 rounded-md text-[10px] font-black uppercase shadow"
                 >
                   {t('go_to_store') || "Mağazaya Git"}
@@ -133,8 +134,8 @@ export const ProductCard = ({ product }) => {
               </div>
             </div>
           ))}
-
         </div>
+
       </div>
     </div>
   );
