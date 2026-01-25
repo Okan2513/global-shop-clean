@@ -3,6 +3,8 @@ import { TrendingDown } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 
+const API_URL = "https://global-shop-clean.onrender.com"; // BACKEND URL
+
 export const ProductCard = ({ product }) => {
   const { language, t } = useLanguage();
 
@@ -35,64 +37,58 @@ export const ProductCard = ({ product }) => {
     return platforms[p] || { name: platform || 'Store', bgColor: 'bg-gray-500', icon: '🏬' };
   };
 
-  const productName = product[`name_${language}`] || product.name_en || product.name;
-  
-  // 🔧 DEMO İÇİN AMAZON EKLEME HİLESİ
+  const productName = product[`name_${language}`] || product.name_tr || product.name;
+
+  // 🔥 GERÇEK FİYATLAR – DEMO / SAHTE AMAZON TAMAMEN SİLİNDİ
   let displayPrices = Array.isArray(product.prices) ? [...product.prices] : [];
-  
-  // Eğer listede Amazon yoksa, demo amaçlı rastgele bir Amazon fiyatı ekle
-  const hasAmazon = displayPrices.some(p => p.platform.toLowerCase() === 'amazon');
-  if (!hasAmazon && displayPrices.length > 0) {
-    const basePrice = displayPrices[0].price;
-    // En ucuz fiyattan %10 daha pahalı bir fake Amazon fiyatı oluştur
-    displayPrices.push({
-      platform: 'amazon',
-      price: basePrice * 1.1 
-    });
-  }
 
   const sortedPrices = displayPrices.sort((a, b) => (a.price || 0) - (b.price || 0));
-    
   const cheapestPrice = sortedPrices[0];
   const maxPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price : 0;
   const priceDifference = maxPrice > 0 ? maxPrice - (cheapestPrice?.price || 0) : 0;
 
+  // 🔥 MAĞAZAYA GİT → BACKEND AFFILIATE REDIRECT
+  const handleGoToStore = (e, platform) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    window.open(
+      `${API_URL}/api/redirect/${product.id}/${platform}`,
+      "_blank"
+    );
+  };
+
   return (
-    <Link 
-      to={`/product/${product.id}`} 
-      className="product-card group block border rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-500 bg-white"
-    >
-      <div className="relative aspect-square overflow-hidden bg-gray-50">
-        <img
-          src={product.image || 'https://via.placeholder.com/300'}
-          alt={productName}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-          loading="lazy"
-        />
-        
-        {product.discount_percent > 0 && (
-          <div className="absolute top-3 left-3 z-10">
-            <Badge className="bg-red-600 text-white font-black px-2 py-1 rounded-lg border-none">
-              -{product.discount_percent}%
-            </Badge>
-          </div>
-        )}
+    <div className="product-card group block border rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-500 bg-white">
 
-        {priceDifference > 0 && (
-          <div className="absolute bottom-3 left-3 z-10">
-            <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-              <TrendingDown className="h-3 w-3" />
-              {t('savings')} {formatPrice(priceDifference)}
+      {/* ÜRÜN DETAY LINK */}
+      <Link to={`/product/${product.id}`} className="block">
+        <div className="relative aspect-square overflow-hidden bg-gray-50">
+          <img
+            src={product.image || 'https://via.placeholder.com/300'}
+            alt={productName}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+            loading="lazy"
+          />
+
+          {product.discount_percent > 0 && (
+            <div className="absolute top-3 left-3 z-10">
+              <Badge className="bg-red-600 text-white font-black px-2 py-1 rounded-lg border-none">
+                -{product.discount_percent}%
+              </Badge>
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center z-20">
-          <span className="opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0 bg-[#FB7701] text-white px-6 py-2 rounded-full text-xs font-bold shadow-xl">
-            {t('compare_prices')}
-          </span>
+          {priceDifference > 0 && (
+            <div className="absolute bottom-3 left-3 z-10">
+              <div className="bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                <TrendingDown className="h-3 w-3" />
+                {t('savings')} {formatPrice(priceDifference)}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </Link>
 
       <div className="p-4">
         <h3 className="text-sm font-bold text-gray-800 line-clamp-2 mb-2 min-h-[40px] leading-tight group-hover:text-[#FB7701] transition-colors">
@@ -115,18 +111,31 @@ export const ProductCard = ({ product }) => {
           )}
         </div>
 
-        <div className="space-y-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-          {/* Burada ilk 4 fiyatı gösteriyoruz ki Amazon'a yer kalsın */}
-          {sortedPrices.slice(0, 4).map((p, idx) => (
+        {/* FİYAT LİSTESİ + MAĞAZAYA GİT BUTONLARI */}
+        <div className="space-y-2">
+
+          {sortedPrices.map((p, idx) => (
             <div key={idx} className="flex justify-between items-center text-[11px] border-b border-gray-50 pb-1 last:border-0">
-              <span className="text-gray-500 font-medium lowercase">
+              <span className="text-gray-600 font-medium lowercase">
                 {getPlatformInfo(p.platform).icon} {getPlatformInfo(p.platform).name}
               </span>
-              <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
+
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-700">{formatPrice(p.price)}</span>
+
+                {/* 🔥 GERÇEK AFFILIATE YÖNLENDİRME */}
+                <button
+                  onClick={(e) => handleGoToStore(e, p.platform)}
+                  className="bg-[#FB7701] hover:bg-orange-600 text-white px-3 py-1 rounded-md text-[10px] font-black uppercase shadow"
+                >
+                  {t('go_to_store') || "Mağazaya Git"}
+                </button>
+              </div>
             </div>
           ))}
+
         </div>
       </div>
-    </Link>
+    </div>
   );
 };
