@@ -1036,7 +1036,33 @@ async def get_stats(admin: str = Depends(verify_admin)):
         "recent_imports": recent_imports,
         "recent_syncs": recent_syncs
     }
+# 🔥 MAĞAZAYA GİT – AFFILIATE REDIRECT ROUTE
+from fastapi.responses import RedirectResponse
 
+@api_router.get("/redirect/{product_id}/{platform}")
+async def redirect_to_store(product_id: str, platform: str):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    prices = product.get("prices", [])
+
+    selected = None
+    for p in prices:
+        if p.get("platform", "").lower() == platform.lower():
+            selected = p
+            break
+
+    if not selected:
+        raise HTTPException(status_code=404, detail="Platform price not found")
+
+    redirect_url = selected.get("affiliate_url") or selected.get("url")
+
+    if not redirect_url:
+        raise HTTPException(status_code=404, detail="No redirect URL found")
+
+    return RedirectResponse(url=redirect_url, status_code=302)
 # =============== HELPER FUNCTIONS ===============
 
 async def update_category_counts():
