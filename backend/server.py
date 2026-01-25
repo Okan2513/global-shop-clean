@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, UploadFile, File, BackgroundTasks, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -76,7 +76,7 @@ class PlatformPrice(BaseModel):
     url: Optional[str] = None
     in_stock: bool = True
     last_updated: Optional[str] = None
-    
+
     def get_url(self):
         return self.affiliate_url or self.url or "#"
 
@@ -162,12 +162,12 @@ class FeedConfig(BaseModel):
 
 class AliExpressAPI:
     BASE_URL = "https://api-sg.aliexpress.com/sync"
-    
+
     def __init__(self, app_key: str, app_secret: str, tracking_id: str):
         self.app_key = app_key
         self.app_secret = app_secret
         self.tracking_id = tracking_id
-    
+
     def _sign_request(self, params: dict) -> str:
         sorted_params = sorted(params.items())
         sign_str = self.app_secret
@@ -175,7 +175,7 @@ class AliExpressAPI:
             sign_str += f"{k}{v}"
         sign_str += self.app_secret
         return hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
-    
+
     async def _make_request(self, method: str, params: dict) -> dict:
         base_params = {
             "app_key": self.app_key,
@@ -187,12 +187,12 @@ class AliExpressAPI:
         }
         base_params.update(params)
         base_params["sign"] = self._sign_request(base_params)
-        
+
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             response = await http_client.post(self.BASE_URL, data=base_params)
             return response.json()
-    
-    async def search_products(self, keywords: str, category_id: str = None, 
+
+    async def search_products(self, keywords: str, category_id: str = None,
                              min_price: float = None, max_price: float = None,
                              page: int = 1, page_size: int = 50) -> List[dict]:
         params = {
@@ -203,24 +203,24 @@ class AliExpressAPI:
             "page_no": str(page),
             "page_size": str(min(page_size, 50)),
         }
-        
+
         if category_id:
             params["category_ids"] = category_id
         if min_price:
             params["min_sale_price"] = str(int(min_price * 100))
         if max_price:
             params["max_sale_price"] = str(int(max_price * 100))
-        
+
         result = await self._make_request("aliexpress.affiliate.product.query", params)
-        
+
         if "aliexpress_affiliate_product_query_response" in result:
             resp = result["aliexpress_affiliate_product_query_response"]["resp_result"]
             if resp.get("resp_code") == 200:
                 products = resp.get("result", {}).get("products", {}).get("product", [])
                 return products if isinstance(products, list) else [products]
-        
+
         return []
-    
+
     async def get_hot_products(self, category_id: str = None, page: int = 1) -> List[dict]:
         params = {
             "target_currency": "USD",
@@ -229,18 +229,18 @@ class AliExpressAPI:
             "page_no": str(page),
             "page_size": "50",
         }
-        
+
         if category_id:
             params["category_ids"] = category_id
-        
+
         result = await self._make_request("aliexpress.affiliate.hotproduct.query", params)
-        
+
         if "aliexpress_affiliate_hotproduct_query_response" in result:
             resp = result["aliexpress_affiliate_hotproduct_query_response"]["resp_result"]
             if resp.get("resp_code") == 200:
                 products = resp.get("result", {}).get("products", {}).get("product", [])
                 return products if isinstance(products, list) else [products]
-        
+
         return []
 
 def transform_aliexpress_product(ae_product: dict) -> dict:
@@ -249,7 +249,7 @@ def transform_aliexpress_product(ae_product: dict) -> dict:
     discount = 0
     if original_price > 0 and price < original_price:
         discount = int(((original_price - price) / original_price) * 100)
-    
+
     return {
         "external_id": ae_product.get("product_id"),
         "name": ae_product.get("product_title", ""),
@@ -270,7 +270,7 @@ def transform_aliexpress_product(ae_product: dict) -> dict:
 async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     products = []
     reader = csv.DictReader(io.StringIO(content))
-    
+
     for row in reader:
         try:
             product = {
@@ -285,22 +285,22 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
                 "brand": row.get("brand") or row.get("manufacturer"),
                 "in_stock": row.get("availability", "in stock").lower() == "in stock",
             }
-            
+
             if product["external_id"] and product["name"]:
                 products.append(product)
         except Exception as e:
             logger.error(f"Error parsing row: {e}")
             continue
-    
+
     return products
 
 async def parse_xml_feed(content: str, platform: str) -> List[dict]:
     products = []
-    
+
     try:
         root = ET.fromstring(content)
         items = root.findall(".//item") or root.findall(".//product") or root.findall(".//entry")
-        
+
         for item in items:
             try:
                 def get_text(elem, tags):
@@ -309,10 +309,10 @@ async def parse_xml_feed(content: str, platform: str) -> List[dict]:
                         if el is not None and el.text:
                             return el.text.strip()
                     return ""
-                
+
                 price_text = get_text(item, ["g:price", "price", "sale_price"]).replace("USD", "").replace("$", "").strip()
                 orig_price_text = get_text(item, ["g:sale_price", "original_price"]).replace("USD", "").replace("$", "").strip()
-                
+
                 product = {
                     "external_id": get_text(item, ["g:id", "id", "sku", "product_id"]),
                     "name": get_text(item, ["g:title", "title", "name", "product_name"]),
@@ -324,7 +324,7 @@ async def parse_xml_feed(content: str, platform: str) -> List[dict]:
                     "category": get_text(item, ["g:product_type", "category", "product_type"]),
                     "brand": get_text(item, ["g:brand", "brand"]),
                 }
-                
+
                 if product["external_id"] and product["name"]:
                     products.append(product)
             except Exception as e:
@@ -332,7 +332,7 @@ async def parse_xml_feed(content: str, platform: str) -> List[dict]:
                 continue
     except ET.ParseError as e:
         logger.error(f"XML Parse error: {e}")
-    
+
     return products
 
 async def fetch_feed_from_url(url: str, feed_type: str) -> str:
@@ -344,11 +344,11 @@ async def fetch_feed_from_url(url: str, feed_type: str) -> str:
 async def import_feed_products(feed_products: List[dict], platform: str) -> tuple:
     imported = 0
     updated = 0
-    
+
     for fp in feed_products:
         try:
             existing = await db.products.find_one({f"source_ids.{platform}": fp["external_id"]}, {"_id": 0})
-            
+
             price_entry = PlatformPrice(
                 platform=platform,
                 price=fp["price"],
@@ -358,15 +358,15 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> tupl
                 in_stock=fp.get("in_stock", True),
                 last_updated=datetime.now(timezone.utc).isoformat()
             )
-            
+
             if existing:
                 prices = existing.get("prices", [])
                 prices = [p for p in prices if p["platform"] != platform]
                 prices.append(price_entry.model_dump())
-                
+
                 best_price = min(p["price"] for p in prices)
                 best_platform = next(p["platform"] for p in prices if p["price"] == best_price)
-                
+
                 await db.products.update_one(
                     {"id": existing["id"]},
                     {"$set": {
@@ -381,7 +381,7 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> tupl
                 category_slug = fp.get("category", "general").lower().replace(" ", "-").replace("&", "and")
                 orig_price = fp.get("original_price", fp["price"])
                 discount = int(((orig_price - fp["price"]) / orig_price) * 100) if orig_price > fp["price"] else None
-                
+
                 product = Product(
                     name=fp["name"],
                     description=fp.get("description", fp["name"]),
@@ -398,43 +398,43 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> tupl
                     created_at=datetime.now(timezone.utc).isoformat(),
                     updated_at=datetime.now(timezone.utc).isoformat()
                 )
-                
+
                 await db.products.insert_one(product.model_dump())
                 imported += 1
-                
+
         except Exception as e:
             logger.error(f"Error importing product: {e}")
             continue
-    
+
     return imported, updated
 
 # =============== AUTOMATED SYNC SERVICE ===============
 
 async def sync_aliexpress_products(keywords_list: List[str] = None):
     settings = await db.settings.find_one({"type": "api"}, {"_id": 0})
-    
+
     if not settings or not settings.get("aliexpress_app_key"):
         logger.warning("AliExpress API not configured")
         return {"success": False, "error": "AliExpress API not configured"}
-    
+
     api = AliExpressAPI(
         app_key=settings["aliexpress_app_key"],
         app_secret=settings["aliexpress_app_secret"],
         tracking_id=settings["aliexpress_tracking_id"]
     )
-    
+
     sync_log = SyncLog(platform="aliexpress", sync_type="auto")
     await db.sync_logs.insert_one(sync_log.model_dump())
-    
+
     total_synced = 0
-    
+
     try:
         # Sync hot products
         ae_products = await api.get_hot_products()
         feed_products = [transform_aliexpress_product(p) for p in ae_products]
         imported, updated = await import_feed_products(feed_products, "aliexpress")
         total_synced += imported + updated
-        
+
         # Sync by keywords if provided
         if keywords_list:
             for keyword in keywords_list:
@@ -442,7 +442,7 @@ async def sync_aliexpress_products(keywords_list: List[str] = None):
                 feed_products = [transform_aliexpress_product(p) for p in ae_products]
                 imported, updated = await import_feed_products(feed_products, "aliexpress")
                 total_synced += imported + updated
-        
+
         await db.sync_logs.update_one(
             {"id": sync_log.id},
             {"$set": {
@@ -451,11 +451,11 @@ async def sync_aliexpress_products(keywords_list: List[str] = None):
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         await update_category_counts()
-        
+
         return {"success": True, "products_synced": total_synced}
-        
+
     except Exception as e:
         await db.sync_logs.update_one(
             {"id": sync_log.id},
@@ -470,17 +470,17 @@ async def sync_aliexpress_products(keywords_list: List[str] = None):
 async def sync_feed_from_url(platform: str, feed_url: str, feed_type: str = "csv"):
     sync_log = SyncLog(platform=platform, sync_type="feed_url")
     await db.sync_logs.insert_one(sync_log.model_dump())
-    
+
     try:
         content = await fetch_feed_from_url(feed_url, feed_type)
-        
+
         if feed_type == "csv":
             products = await parse_csv_feed(content, platform)
         else:
             products = await parse_xml_feed(content, platform)
-        
+
         imported, updated = await import_feed_products(products, platform)
-        
+
         await db.sync_logs.update_one(
             {"id": sync_log.id},
             {"$set": {
@@ -489,18 +489,18 @@ async def sync_feed_from_url(platform: str, feed_url: str, feed_type: str = "csv
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         # Update feed config last sync time
         await db.feed_configs.update_one(
             {"platform": platform},
             {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}},
             upsert=True
         )
-        
+
         await update_category_counts()
-        
+
         return {"success": True, "imported": imported, "updated": updated}
-        
+
     except Exception as e:
         await db.sync_logs.update_one(
             {"id": sync_log.id},
@@ -514,10 +514,10 @@ async def sync_feed_from_url(platform: str, feed_url: str, feed_type: str = "csv
 
 async def run_all_syncs():
     results = {}
-    
+
     # Sync AliExpress
     results["aliexpress"] = await sync_aliexpress_products()
-    
+
     # Sync configured feeds (Temu, Shein)
     feed_configs = await db.feed_configs.find({"enabled": True}, {"_id": 0}).to_list(10)
     for config in feed_configs:
@@ -527,7 +527,7 @@ async def run_all_syncs():
                 config["feed_url"],
                 config.get("feed_type", "csv")
             )
-    
+
     return results
 
 # =============== SEARCH HELPER FUNCTIONS ===============
@@ -552,16 +552,16 @@ def get_category_keywords() -> dict:
 def detect_category_from_search(search: str) -> Optional[str]:
     search_lower = search.lower()
     category_keywords = get_category_keywords()
-    
+
     max_matches = 0
     best_category = None
-    
+
     for category, keywords in category_keywords.items():
         matches = sum(1 for kw in keywords if kw in search_lower)
         if matches > max_matches:
             max_matches = matches
             best_category = category
-    
+
     return best_category if max_matches > 0 else None
 
 # =============== ROUTES ===============
@@ -570,19 +570,47 @@ def detect_category_from_search(search: str) -> Optional[str]:
 async def root():
     return {"message": "GLOBAL API - Price Comparison Platform", "version": "2.0.0"}
 
+# ✅ EKLENDİ: Mağazaya Git için güvenli redirect endpoint'i (DB'deki linke 302 yönlendirir)
+@api_router.get("/redirect/{product_id}/{platform}")
+async def redirect_to_store(product_id: str, platform: str):
+    """
+    Frontend "Mağazaya Git" butonu buraya gider.
+    Backend DB'den ürünün ilgili platform linkini bulur ve 302 ile yönlendirir.
+    """
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    prices = product.get("prices", [])
+    target = None
+    for p in prices:
+        if (p.get("platform") or "").lower() == platform.lower():
+            target = p
+            break
+
+    if not target:
+        raise HTTPException(status_code=404, detail=f"No price entry for platform: {platform}")
+
+    # affiliate_url varsa onu kullan, yoksa url, yoksa hata
+    url = target.get("affiliate_url") or target.get("url")
+    if not url or url == "#":
+        raise HTTPException(status_code=400, detail="Store URL not available for this product/platform")
+
+    return RedirectResponse(url=url, status_code=302)
+
 # PANELDEKİ 404 HATASINI ÇÖZEN VE AMAZON DAHİL TÜMÜNÜ AKTARAN KRİTİK ROUTE
 @api_router.post("/import")
 async def import_single_product(request: ImportRequest, admin: str = Depends(verify_admin)):
     """Panelden gelen Amazon, AliExpress, Shein veya Temu linkini işler"""
     url = request.url.lower()
     category = request.category
-    
+
     platform = "general"
     if "amazon" in url: platform = "amazon"
     elif "aliexpress.com" in url: platform = "aliexpress"
     elif "shein.com" in url: platform = "shein"
     elif "temu.com" in url: platform = "temu"
-    
+
     logger.info(f"Import işlemi başlatıldı: {platform.upper()} - URL: {url}")
 
     new_product = {
@@ -609,7 +637,7 @@ async def import_single_product(request: ImportRequest, admin: str = Depends(ver
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     try:
         await db.products.insert_one(new_product)
         await update_category_counts()
@@ -634,22 +662,22 @@ async def get_products(
     count = await db.products.count_documents({})
     if count == 0:
         await seed_demo_products()
-    
+
     query = {}
     search_boost_category = None
-    
+
     if category:
         query["category_slug"] = category
-    
+
     if search:
         normalized_search = normalize_search_term(search)
-        
+
         if not category:
             search_boost_category = detect_category_from_search(normalized_search)
-        
+
         search_words = normalized_search.split()
         search_conditions = []
-        
+
         for word in search_words:
             if len(word) >= 2:
                 word_conditions = [
@@ -660,31 +688,31 @@ async def get_products(
                     {"brand": {"$regex": word, "$options": "i"}},
                     {"category": {"$regex": word, "$options": "i"}},
                 ]
-                
+
                 if len(word) >= 4:
                     typo_pattern = ".*".join(word[:min(len(word), 6)])
                     word_conditions.append({"name": {"$regex": typo_pattern, "$options": "i"}})
-                
+
                 search_conditions.append({"$or": word_conditions})
-        
+
         if search_conditions:
             if len(search_conditions) == 1:
                 query["$or"] = search_conditions[0]["$or"]
             else:
                 query["$and"] = search_conditions
-    
+
     if platform:
         query["prices.platform"] = platform
-    
+
     if min_price is not None:
         query["best_price"] = {"$gte": min_price}
-    
+
     if max_price is not None:
         if "best_price" in query:
             query["best_price"]["$lte"] = max_price
         else:
             query["best_price"] = {"$lte": max_price}
-    
+
     sort_options = {
         "popular": [("reviews_count", -1)],
         "price_asc": [("best_price", 1)],
@@ -693,23 +721,23 @@ async def get_products(
         "discount": [("discount_percent", -1)]
     }
     sort_by = sort_options.get(sort, [("reviews_count", -1)])
-    
+
     if search_boost_category and not category:
         category_query = {**query, "category_slug": search_boost_category}
         category_products = await db.products.find(category_query, {"_id": 0}).sort(sort_by).limit(limit).to_list(limit)
-        
+
         other_query = {**query}
         if "$and" not in other_query:
             other_query["category_slug"] = {"$ne": search_boost_category}
         else:
             other_query["$and"].append({"category_slug": {"$ne": search_boost_category}})
-        
+
         remaining = limit - len(category_products)
         if remaining > 0:
             other_products = await db.products.find(other_query, {"_id": 0}).sort(sort_by).skip(skip).limit(remaining).to_list(remaining)
             return category_products + other_products
         return category_products[:limit]
-    
+
     products = await db.products.find(query, {"_id": 0}).sort(sort_by).skip(skip).limit(limit).to_list(limit)
     return products
 
@@ -723,28 +751,28 @@ async def get_product(product_id: str, lang: str = "en"):
 @api_router.get("/products/search/suggestions")
 async def get_search_suggestions(q: str = Query(min_length=2)):
     normalized_q = normalize_search_term(q)
-    
+
     search_conditions = [
         {"name": {"$regex": normalized_q, "$options": "i"}},
         {"name_tr": {"$regex": normalized_q, "$options": "i"}},
         {"brand": {"$regex": normalized_q, "$options": "i"}},
         {"category": {"$regex": normalized_q, "$options": "i"}}
     ]
-    
+
     if len(normalized_q) >= 4:
         typo_pattern = ".*".join(normalized_q[:min(len(normalized_q), 8)])
         search_conditions.append({"name": {"$regex": typo_pattern, "$options": "i"}})
-    
+
     products = await db.products.find(
         {"$or": search_conditions},
         {"_id": 0, "name": 1, "name_tr": 1, "category": 1, "category_slug": 1, "best_price": 1, "best_platform": 1}
     ).limit(10).to_list(10)
-    
+
     detected_category = detect_category_from_search(normalized_q)
-    
+
     suggestions = []
     seen_names = set()
-    
+
     for p in products:
         name = p["name"]
         if name.lower() not in seen_names:
@@ -756,7 +784,7 @@ async def get_search_suggestions(q: str = Query(min_length=2)):
                 "best_price": p.get("best_price"),
                 "best_platform": p.get("best_platform")
             })
-    
+
     return {
         "suggestions": suggestions,
         "detected_category": detected_category,
@@ -781,17 +809,17 @@ async def import_feed(
 ):
     if platform not in ["temu", "shein", "aliexpress"]:
         raise HTTPException(status_code=400, detail="Invalid platform")
-    
+
     content = await file.read()
     content_str = content.decode("utf-8")
-    
+
     feed_import = FeedImport(
         platform=platform,
         filename=file.filename,
         status="processing"
     )
     await db.feed_imports.insert_one(feed_import.model_dump())
-    
+
     try:
         if file.filename.endswith(".csv"):
             products = await parse_csv_feed(content_str, platform)
@@ -799,9 +827,9 @@ async def import_feed(
             products = await parse_xml_feed(content_str, platform)
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format. Use CSV or XML.")
-        
+
         imported, updated = await import_feed_products(products, platform)
-        
+
         await db.feed_imports.update_one(
             {"id": feed_import.id},
             {"$set": {
@@ -811,16 +839,16 @@ async def import_feed(
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         await update_category_counts()
-        
+
         return {
             "success": True,
             "import_id": feed_import.id,
             "products_imported": imported,
             "products_updated": updated
         }
-        
+
     except Exception as e:
         await db.feed_imports.update_one(
             {"id": feed_import.id},
@@ -861,7 +889,7 @@ async def sync_platform_feed(platform: str, background_tasks: BackgroundTasks, a
         if not config or not config.get("feed_url"):
             raise HTTPException(status_code=400, detail=f"No feed URL configured for {platform}")
         result = await sync_feed_from_url(platform, config["feed_url"], config.get("feed_type", "csv"))
-    
+
     return result
 
 @api_router.post("/admin/feeds/sync-all")
@@ -878,19 +906,19 @@ async def sync_aliexpress(
     admin: str = Depends(verify_admin)
 ):
     settings = await db.settings.find_one({"type": "api"}, {"_id": 0})
-    
+
     if not settings or not settings.get("aliexpress_app_key"):
         raise HTTPException(status_code=400, detail="AliExpress API not configured")
-    
+
     api = AliExpressAPI(
         app_key=settings["aliexpress_app_key"],
         app_secret=settings["aliexpress_app_secret"],
         tracking_id=settings["aliexpress_tracking_id"]
     )
-    
+
     sync_log = SyncLog(platform="aliexpress", sync_type=sync_type)
     await db.sync_logs.insert_one(sync_log.model_dump())
-    
+
     try:
         if sync_type == "hot":
             ae_products = await api.get_hot_products(category_id)
@@ -898,10 +926,10 @@ async def sync_aliexpress(
             if not keywords:
                 raise HTTPException(status_code=400, detail="Keywords required for search sync")
             ae_products = await api.search_products(keywords, category_id)
-        
+
         feed_products = [transform_aliexpress_product(p) for p in ae_products]
         imported, updated = await import_feed_products(feed_products, "aliexpress")
-        
+
         await db.sync_logs.update_one(
             {"id": sync_log.id},
             {"$set": {
@@ -910,15 +938,15 @@ async def sync_aliexpress(
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         await update_category_counts()
-        
+
         return {
             "success": True,
             "sync_id": sync_log.id,
             "products_synced": imported + updated
         }
-        
+
     except Exception as e:
         await db.sync_logs.update_one(
             {"id": sync_log.id},
@@ -949,13 +977,13 @@ async def update_settings(settings: APISettings, admin: str = Depends(verify_adm
     settings_dict = settings.model_dump(exclude_none=True)
     settings_dict["type"] = "api"
     settings_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
     await db.settings.update_one(
         {"type": "api"},
         {"$set": settings_dict},
         upsert=True
     )
-    
+
     return {"success": True, "message": "Settings updated"}
 
 # Site Settings
@@ -969,13 +997,13 @@ async def update_site_settings(settings: SiteSettings, admin: str = Depends(veri
     settings_dict = settings.model_dump(exclude_none=True)
     settings_dict["type"] = "site"
     settings_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
     await db.settings.update_one(
         {"type": "site"},
         {"$set": settings_dict},
         upsert=True
     )
-    
+
     return {"success": True, "message": "Site settings updated"}
 
 # Public site settings
@@ -992,16 +1020,16 @@ async def admin_auth_check(admin: str = Depends(verify_admin)):
 @api_router.get("/admin/stats")
 async def get_stats(admin: str = Depends(verify_admin)):
     total_products = await db.products.count_documents({})
-    
+
     pipeline = [
         {"$unwind": "$prices"},
         {"$group": {"_id": "$prices.platform", "count": {"$sum": 1}}}
     ]
     platform_stats = await db.products.aggregate(pipeline).to_list(10)
-    
+
     recent_imports = await db.feed_imports.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
     recent_syncs = await db.sync_logs.find({}, {"_id": 0}).sort("started_at", -1).limit(5).to_list(5)
-    
+
     return {
         "total_products": total_products,
         "products_by_platform": {s["_id"]: s["count"] for s in platform_stats},
@@ -1016,7 +1044,7 @@ async def update_category_counts():
         {"$group": {"_id": "$category_slug", "count": {"$sum": 1}}}
     ]
     counts = await db.products.aggregate(pipeline).to_list(100)
-    
+
     for c in counts:
         await db.categories.update_one(
             {"slug": c["_id"]},
