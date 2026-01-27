@@ -254,6 +254,11 @@ async def get_products_alias(
     skip: int = 0,
 ):
     products = await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    
+    for product in products:
+        if "image_url" in product:
+            product["image"] = product["image_url"]
+         
     return products
 # 🔥 ÜRÜN DETAY ALIAS (Emergent ürün sayfası için)
 @api_router.get("/products/{product_id}")
