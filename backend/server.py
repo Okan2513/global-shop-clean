@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, UploadFile, File, BackgroundTasks, Depends
+ync def parce_csv_feedfrom fastapi import FastAPI, APIRouter, HTTPException, Query, Header, UploadFile, File, BackgroundTasks, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, RedirectResponse
 from dotenv import load_dotenv
@@ -20,7 +20,16 @@ import io
 import xml.etree.ElementTree as ET
 import asyncio
 import re  # ✅ küçük ek: regex helper için
-
+def clean_price(val):
+    if not val:
+        return 0.0
+    val = str(val)
+    val = val.replace("EUR", "").replace("USD", "").replace("€", "").replace("$", "")
+    val = val.replace(",", ".").strip()
+    try:
+        return float(val)
+    except:
+        return 0.0
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -325,7 +334,51 @@ async def extract_aliexpress_product_id(url: str) -> Optional[str]:
     return None
 
 # =============== FEED IMPORT SERVICE ===============
+# ================== SADECE EKLENEN YER ==================
 
+def clean_price(val):
+    if not val:
+        return 0.0
+    val = str(val)
+    val = val.replace("EUR", "").replace("USD", "").replace("€", "").replace("$", "")
+    val = val.replace(",", ".").strip()
+    try:
+        return float(val)
+    except:
+        return 0.0
+
+# ================== FEED IMPORT SERVICE ==================
+
+async def parse_csv_feed(content: str, platform: str) -> List[dict]:
+    products = []
+    reader = csv.DictReader(io.StringIO(content))
+    
+    for row in reader:
+        try:
+            product = {
+                "external_id": row.get("product_id") or row.get("sku") or row.get("id"),
+                "name": row.get("product_name") or row.get("title") or row.get("name"),
+                "description": row.get("description") or row.get("product_description") or "",
+                "image": row.get("image_url") or row.get("image") or row.get("image_link"),
+
+                # 🔥 BURASI DÜZELTİLDİ
+                "price": clean_price(row.get("price") or row.get("sale_price")),
+                "original_price": clean_price(row.get("original_price") or row.get("retail_price")),
+
+                "affiliate_url": row.get("affiliate_url") or row.get("deep_link") or row.get("link"),
+                "category": row.get("category") or row.get("product_type") or "General",
+                "brand": row.get("brand") or row.get("manufacturer"),
+                "in_stock": row.get("availability", "in stock").lower() == "in stock",
+            }
+            
+            if product["external_id"] and product["name"]:
+                products.append(product)
+
+        except Exception as e:
+            logger.error(f"Error parsing row: {e}")
+            continue
+    
+    return products
 async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     products = []
     reader = csv.DictReader(io.StringIO(content))
