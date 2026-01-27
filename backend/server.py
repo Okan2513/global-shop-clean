@@ -39,8 +39,8 @@ api_router = APIRouter(prefix="/api")
 security = HTTPBasic()
 
 # Admin credentials - stored securely
-ADMIN_USERNAME ='Yusuf'
-ADMIN_PASSWORD ='2012'
+ADMIN_USERNAME ="Yusuf"
+ADMIN_PASSWORD ="2012"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
