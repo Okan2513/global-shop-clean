@@ -40,7 +40,7 @@ security = HTTPBasic()
 
 # Admin credentials - stored securely
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'Yusuf')
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '2012!')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '2012')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
