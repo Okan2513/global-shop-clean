@@ -343,6 +343,7 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
                 "category": row.get("category") or row.get("product_type") or "General",
                 "brand": row.get("brand") or row.get("manufacturer"),
                 "in_stock": row.get("availability", "in stock").lower() == "in stock",
+                "group_id": row.get("group_id") or row.get("group") or row.get("groupId"),  # ✅ küçük ek: varsa al
             }
 
             if product["external_id"] and product["name"]:
@@ -426,20 +427,30 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> tupl
                 best_price = min(p["price"] for p in prices if p["price"] > 0) if any(p["price"] > 0 for p in prices) else fp["price"]
                 best_platform = next((p["platform"] for p in prices if p["price"] == best_price), platform)
 
+                update_doc = {
+                    "prices": prices,
+                    "best_price": best_price,
+                    "best_platform": best_platform,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+                # ✅ küçük ek: group_id varsa sakla
+                if fp.get("group_id"):
+                    update_doc["attributes.group_id"] = fp.get("group_id")
+
                 await db.products.update_one(
                     {"id": existing["id"]},
-                    {"$set": {
-                        "prices": prices,
-                        "best_price": best_price,
-                        "best_platform": best_platform,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }}
+                    {"$set": update_doc}
                 )
                 updated += 1
             else:
                 category_slug = fp.get("category", "general").lower().replace(" ", "-").replace("&", "and")
                 orig_price = fp.get("original_price") or fp["price"]
                 discount = int(((orig_price - fp["price"]) / orig_price) * 100) if orig_price > fp["price"] else None
+
+                attrs = {}
+                # ✅ küçük ek: group_id varsa attributes içine koy
+                if fp.get("group_id"):
+                    attrs["group_id"] = fp.get("group_id")
 
                 product = Product(
                     name=fp["name"],
@@ -453,6 +464,7 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> tupl
                     best_platform=platform,
                     discount_percent=discount,
                     brand=fp.get("brand"),
+                    attributes=attrs,  # ✅ küçük ek
                     source_ids={platform: fp["external_id"]},
                     created_at=datetime.now(timezone.utc).isoformat(),
                     updated_at=datetime.now(timezone.utc).isoformat()
@@ -719,6 +731,45 @@ async def import_single_product(request: ImportRequest, admin: str = Depends(ver
         return {"success": True, "message": f"{platform.upper()} ürünü başarıyla eklendi!", "id": p_id}
     except Exception as e:
         logger.error(f"Import hatası: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ✅✅ EKLENDİ: CSV DOSYASI YÜKLEME (TÜM PLATFORMLAR) — AUTH ZORUNLU
+@api_router.post("/admin/import/csv")
+async def import_products_from_csv(
+    platform: str = Query(..., description="aliexpress | temu | shein | amazon"),
+    file: UploadFile = File(...),
+    admin: str = Depends(verify_admin)
+):
+    p = (platform or "").strip().lower()
+    allowed = {"aliexpress", "temu", "shein", "amazon"}
+    if p not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid platform. Allowed: {', '.join(sorted(allowed))}")
+
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file")
+
+    try:
+        raw = await file.read()
+        # utf-8-sig BOM olursa sorun çıkmasın
+        content = raw.decode("utf-8-sig", errors="ignore")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read CSV file (encoding issue)")
+
+    # CSV parse + import
+    try:
+        feed_products = await parse_csv_feed(content, p)
+        imported, updated = await import_feed_products(feed_products, p)
+        await update_category_counts()
+        return {
+            "success": True,
+            "platform": p,
+            "filename": file.filename,
+            "rows_parsed": len(feed_products),
+            "imported": imported,
+            "updated": updated
+        }
+    except Exception as e:
+        logger.error(f"CSV import error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Ürün ve Kategori Rotaları ---
