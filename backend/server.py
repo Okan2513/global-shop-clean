@@ -255,7 +255,13 @@ async def get_products_alias(
 ):
     products = await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     return products
-
+# 🔥 ÜRÜN DETAY ALIAS (Emergent ürün sayfası için)
+@api_router.get("/products/{product_id}")
+async def get_product_alias(product_id: str, lang: Optional[str] = None):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
 
 @api_router.get("/categories")
 async def get_categories_alias(lang: Optional[str] = None):
