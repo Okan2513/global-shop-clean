@@ -261,9 +261,10 @@ async def get_product_alias(product_id: str, lang: Optional[str] = None):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+     if "image_url" in product:
+        product["image"] = product["image_url"]   
     return product
-if "image_url" in product:
-        product["image"] = product["image_url"]
+
 @api_router.get("/categories")
 async def get_categories_alias(lang: Optional[str] = None):
     categories = await db.categories.find({}, {"_id": 0}).to_list(200)
