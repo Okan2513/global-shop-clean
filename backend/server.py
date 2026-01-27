@@ -245,7 +245,22 @@ async def import_products_from_csv(
         "imported": imported,
         "updated": updated,
     }
+ # 🔹 Frontend uyum alias (Emergent için: sort, lang parametreleri)
+@api_router.get("/products")
+async def get_products_alias(
+    sort: Optional[str] = None,
+    lang: Optional[str] = None,
+    limit: int = Query(default=50, le=100),
+    skip: int = 0,
+):
+    products = await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    return products
 
+
+@api_router.get("/categories")
+async def get_categories_alias(lang: Optional[str] = None):
+    categories = await db.categories.find({}, {"_id": 0}).to_list(200)
+    return categories        
 app.include_router(api_router)
 
 @app.on_event("shutdown")
