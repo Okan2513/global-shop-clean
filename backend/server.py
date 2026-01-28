@@ -120,7 +120,7 @@ def clean_price(val) -> float:
         return 0.0
 
 # =========================
-# 🔥 DÜZELTİLEN TEK YER
+# CSV PARSER (SADE, SAĞLAM)
 # =========================
 
 async def parse_csv_feed(content: str, platform: str) -> List[dict]:
@@ -135,15 +135,17 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
             if not external_id or not name:
                 continue
 
-            product = {
-                "external_id": str(external_id).strip(),
-                "name": str(name).strip(),
-                "description": str(name).strip(),
-                "image": (row.get("image") or "").strip(),
+            image = (row.get("image") or "").strip()
+            if image.startswith("//"):
+                image = "https:" + image
 
+            product = {
+                "external_id": external_id.strip(),
+                "name": name.strip(),
+                "description": name.strip(),
+                "image": image,
                 "price": clean_price(row.get("price")),
                 "original_price": clean_price(row.get("original_price")),
-
                 "affiliate_url": (row.get("affiliate_url") or "").strip(),
                 "category": (row.get("category") or "General").strip(),
                 "brand": (row.get("brand") or "").strip() or None,
@@ -153,7 +155,7 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
             products.append(product)
 
         except Exception as e:
-            logger.error(f"Error parsing row: {e}")
+            logger.error(f"CSV row error: {e}")
             continue
 
     return products
@@ -168,7 +170,10 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
 
     for fp in feed_products:
         try:
-            existing = await db.products.find_one({f"source_ids.{platform}": fp["external_id"]}, {"_id": 0})
+            existing = await db.products.find_one(
+                {f"source_ids.{platform}": fp["external_id"]},
+                {"_id": 0},
+            )
 
             price_entry = PlatformPrice(
                 platform=platform,
@@ -178,11 +183,12 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
                 affiliate_url=fp.get("affiliate_url"),
                 url=fp.get("affiliate_url"),
                 in_stock=True,
-                last_updated=datetime.now(timezone.utc).isoformat()
+                last_updated=datetime.now(timezone.utc).isoformat(),
             )
 
             if existing:
                 prices = existing.get("prices", [])
+                prices = [p for p in prices if p["platform"] != platform]
                 prices.append(price_entry.model_dump())
 
                 await db.products.update_one(
@@ -190,34 +196,34 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
                     {"$set": {
                         "prices": prices,
                         "updated_at": datetime.now(timezone.utc).isoformat(),
-                    }}
+                    }},
                 )
                 updated += 1
 
             else:
-                category_slug = (fp.get("category") or "general").lower().replace(" ", "-")
+                slug = (fp.get("category") or "general").lower().replace(" ", "-")
 
                 product = Product(
                     name=fp["name"],
-                    description=fp["name"],
-                    image=fp.get("image") or "",
-                    images=[fp.get("image")] if fp.get("image") else [],
-                    category=fp.get("category") or "General",
-                    category_slug=category_slug,
+                    description=fp["description"],
+                    image=fp["image"],
+                    images=[fp["image"]] if fp["image"] else [],
+                    category=fp["category"],
+                    category_slug=slug,
                     prices=[price_entry.model_dump()],
-                    best_price=fp.get("price", 0.0),
+                    best_price=fp["price"],
                     best_platform=platform,
                     brand=fp.get("brand"),
                     source_ids={platform: fp["external_id"]},
                     created_at=datetime.now(timezone.utc).isoformat(),
-                    updated_at=datetime.now(timezone.utc).isoformat()
+                    updated_at=datetime.now(timezone.utc).isoformat(),
                 )
 
                 await db.products.insert_one(product.model_dump())
                 imported += 1
 
         except Exception as e:
-            logger.error(f"Error importing product: {e}")
+            logger.error(f"Import error: {e}")
             continue
 
     return imported, updated
@@ -245,35 +251,30 @@ async def import_products_from_csv(
         "imported": imported,
         "updated": updated,
     }
- # 🔹 Frontend uyum alias (Emergent için: sort, lang parametreleri)
+
+# 🔹 LISTE (Emergent uyumlu)
 @api_router.get("/products")
-async def get_products_alias(
-    sort: Optional[str] = None,
-    lang: Optional[str] = None,
+async def get_products(
     limit: int = Query(default=50, le=100),
     skip: int = 0,
 ):
     products = await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
-    
-    for product in products:
-        if "image_url" in product:
-            product["image"] = product["image_url"]
-         
     return products
-# 🔥 ÜRÜN DETAY ALIAS (Emergent ürün sayfası için)
+
+# 🔹 DETAY (ÜRÜN BULUNAMADI HATASI ÇÖZÜLDÜ)
 @api_router.get("/products/{product_id}")
-async def get_product_alias(product_id: str, lang: Optional[str] = None):
+async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
+
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-     if "image_url" in product:
-        product["image"] = product["image_url"]   
+
     return product
 
 @api_router.get("/categories")
-async def get_categories_alias(lang: Optional[str] = None):
-    categories = await db.categories.find({}, {"_id": 0}).to_list(200)
-    return categories        
+async def get_categories():
+    return await db.categories.find({}, {"_id": 0}).to_list(200)
+
 app.include_router(api_router)
 
 @app.on_event("shutdown")
