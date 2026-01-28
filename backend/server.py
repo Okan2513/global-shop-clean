@@ -50,9 +50,10 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "2012")
 # =========================
 
 def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
+    if not (
+        secrets.compare_digest(credentials.username, ADMIN_USERNAME)
+        and secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid admin credentials",
@@ -120,7 +121,7 @@ def clean_price(val) -> float:
         return 0.0
 
 # =========================
-# CSV PARSER (SADE, SAĞLAM)
+# CSV PARSER (HER FORMATA DAYANIKLI)
 # =========================
 
 async def parse_csv_feed(content: str, platform: str) -> List[dict]:
@@ -129,24 +130,54 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
 
     for row in reader:
         try:
-            external_id = row.get("external_id")
-            name = row.get("name")
+            external_id = (
+                row.get("external_id")
+                or row.get("ProductId")
+                or row.get("id")
+            )
+
+            name = (
+                row.get("name")
+                or row.get("Product Desc")
+                or row.get("title")
+            )
 
             if not external_id or not name:
                 continue
 
-            image = (row.get("image") or "").strip()
+            image = (
+                row.get("image")
+                or row.get("Image Url")
+                or row.get("image_url")
+                or ""
+            ).strip()
+
             if image.startswith("//"):
                 image = "https:" + image
 
             product = {
-                "external_id": external_id.strip(),
-                "name": name.strip(),
-                "description": name.strip(),
+                "external_id": str(external_id).strip(),
+                "name": str(name).strip(),
+                "description": str(name).strip(),
                 "image": image,
-                "price": clean_price(row.get("price")),
-                "original_price": clean_price(row.get("original_price")),
-                "affiliate_url": (row.get("affiliate_url") or "").strip(),
+
+                "price": clean_price(
+                    row.get("price")
+                    or row.get("Discount Price")
+                ),
+
+                "original_price": clean_price(
+                    row.get("original_price")
+                    or row.get("Origin Price")
+                ),
+
+                "affiliate_url": (
+                    row.get("affiliate_url")
+                    or row.get("Promotion Url")
+                    or row.get("link")
+                    or ""
+                ).strip(),
+
                 "category": (row.get("category") or "General").strip(),
                 "brand": (row.get("brand") or "").strip() or None,
                 "in_stock": True,
@@ -177,8 +208,8 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
 
             price_entry = PlatformPrice(
                 platform=platform,
-                price=fp.get("price", 0.0),
-                original_price=fp.get("original_price", 0.0),
+                price=fp["price"],
+                original_price=fp.get("original_price"),
                 currency="EUR",
                 affiliate_url=fp.get("affiliate_url"),
                 url=fp.get("affiliate_url"),
@@ -187,8 +218,7 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
             )
 
             if existing:
-                prices = existing.get("prices", [])
-                prices = [p for p in prices if p["platform"] != platform]
+                prices = [p for p in existing.get("prices", []) if p["platform"] != platform]
                 prices.append(price_entry.model_dump())
 
                 await db.products.update_one(
@@ -201,7 +231,7 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
                 updated += 1
 
             else:
-                slug = (fp.get("category") or "general").lower().replace(" ", "-")
+                slug = (fp["category"] or "general").lower().replace(" ", "-")
 
                 product = Product(
                     name=fp["name"],
@@ -252,23 +282,18 @@ async def import_products_from_csv(
         "updated": updated,
     }
 
-# 🔹 LISTE (Emergent uyumlu)
 @api_router.get("/products")
 async def get_products(
     limit: int = Query(default=50, le=100),
     skip: int = 0,
 ):
-    products = await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
-    return products
+    return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
 
-# 🔹 DETAY (ÜRÜN BULUNAMADI HATASI ÇÖZÜLDÜ)
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
-
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-
     return product
 
 @api_router.get("/categories")
