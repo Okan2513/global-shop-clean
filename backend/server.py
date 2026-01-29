@@ -261,7 +261,14 @@ async def import_feed_products(feed_products: List[dict], platform: str) -> Tupl
 # =========================
 # ROUTES
 # =========================
-
+# 🔧 SITE SETTINGS (Emergent frontend için ZORUNLU)
+@api_router.get("/site-settings")
+async def site_settings():
+    return {
+        "site_name": "GLOBAL",
+        "currency": "EUR",
+        "platforms": ["aliexpress", "temu", "shein", "amazon"]
+    }
 @api_router.post("/admin/import/csv")
 async def import_products_from_csv(
     platform: str = Query(...),
