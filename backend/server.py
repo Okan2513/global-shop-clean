@@ -291,7 +291,7 @@ async def import_products_from_csv(
 
 @api_router.get("/products")
 async def get_products(
-    limit: int = Query(default=50, le=100),
+    limit: int = Query(default=250, le=300),
     skip: int = 0,
 ):
     return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
