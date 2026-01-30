@@ -30,7 +30,7 @@ mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get("DB_NAME", "global_db")]
 
-app = FastAPI(title="GLOBAL API", version="3.0.0")
+app = FastAPI(title="GLOBAL API", version="4.0.0")
 api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
@@ -98,7 +98,7 @@ class Product(BaseModel):
 def clean_price(val) -> float:
     if not val:
         return 0.0
-    s = str(val).replace("€","").replace("$","").replace(",","").strip()
+    s = str(val).replace("€","").replace("$","").replace(",",".").strip()
     try:
         return float(s)
     except:
@@ -115,12 +115,12 @@ def similarity(a: str, b: str) -> float:
 
 def fix_image_url(url: str) -> str:
     if not url:
-        return ""
+        return "https://via.placeholder.com/500x500?text=No+Image"
     url = url.strip()
     if url.startswith("//"):
         url = "https:" + url
     if not url.startswith("http"):
-        return ""
+        return "https://via.placeholder.com/500x500?text=No+Image"
     return url
 
 def calculate_best_price(prices: List[dict]) -> Tuple[float, str]:
@@ -139,19 +139,13 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
 
     for row in reader:
         name = row.get("name") or row.get("title")
-        external_id = row.get("external_id") or row.get("id")
-
         if not name:
             continue
 
-        image = fix_image_url(
-            row.get("image") or row.get("image_url") or ""
-        )
-
         product = {
-            "external_id": external_id or str(uuid.uuid4()),
+            "external_id": row.get("external_id") or row.get("id") or str(uuid.uuid4()),
             "name": name.strip(),
-            "image": image,
+            "image": fix_image_url(row.get("image") or row.get("image_url")),
             "price": clean_price(row.get("price")),
             "original_price": clean_price(row.get("original_price")),
             "affiliate_url": row.get("affiliate_url") or row.get("link") or "",
@@ -168,14 +162,15 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
 
 async def find_matching_product(name: str, category: str):
     norm_name = normalize_text(name)
+
     candidates = await db.products.find(
         {"category": category},
         {"_id": 0}
-    ).to_list(200)
+    ).limit(300).to_list(300)
 
     for product in candidates:
         score = similarity(norm_name, product.get("match_key",""))
-        if score >= 0.88:
+        if score >= 0.75:
             return product
 
     return None
@@ -208,12 +203,16 @@ async def import_feed_products(feed_products: List[dict], platform: str):
 
             best_price, best_platform = calculate_best_price(prices)
 
+            source_ids = match.get("source_ids", {})
+            source_ids[platform] = fp["external_id"]
+
             await db.products.update_one(
                 {"id": match["id"]},
                 {"$set": {
                     "prices": prices,
                     "best_price": best_price,
                     "best_platform": best_platform,
+                    "source_ids": source_ids,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }}
             )
@@ -226,7 +225,7 @@ async def import_feed_products(feed_products: List[dict], platform: str):
             product = Product(
                 name=fp["name"],
                 image=fp["image"],
-                images=[fp["image"]] if fp["image"] else [],
+                images=[fp["image"]],
                 category=fp["category"],
                 category_slug=slug,
                 prices=[price_entry.model_dump()],
@@ -276,8 +275,11 @@ async def import_products_from_csv(
     }
 
 @api_router.get("/products")
-async def get_products(limit: int = 300):
-    return await db.products.find({}, {"_id": 0}).limit(limit).to_list(limit)
+async def get_products(
+    limit: int = Query(default=1000, le=1000),
+    skip: int = 0,
+):
+    return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
 
 app.include_router(api_router)
 
