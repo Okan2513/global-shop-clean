@@ -280,7 +280,17 @@ async def get_products(
     skip: int = 0,
 ):
     return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+@api_router.get("/products/{product_id}")
+async def get_product_detail(product_id: str):
+    product = await db.products.find_one(
+        {"id": product_id},
+        {"_id": 0}
+    )
 
+    if not product:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    return product
 app.include_router(api_router)
 
 @app.on_event("shutdown")
