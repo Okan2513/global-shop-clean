@@ -1,6 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -29,7 +28,7 @@ mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get("DB_NAME", "global_db")]
 
-app = FastAPI(title="GLOBAL API", version="2.0.0")
+app = FastAPI(title="GLOBAL API", version="3.0.0")
 api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
@@ -76,6 +75,7 @@ class PlatformPrice(BaseModel):
     in_stock: bool = True
     last_updated: Optional[str] = None
 
+
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -88,14 +88,11 @@ class Product(BaseModel):
     prices: List[dict] = []
     best_price: Optional[float] = 0
     best_platform: Optional[str] = ""
-    discount_percent: Optional[int] = None
-    rating: Optional[float] = 4.5
-    reviews_count: Optional[int] = 0
     brand: Optional[str] = None
-    attributes: Dict[str, Any] = {}
     source_ids: Dict[str, str] = {}
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
 
 # =========================
 # HELPERS
@@ -120,34 +117,50 @@ def clean_price(val) -> float:
     except:
         return 0.0
 
+
+def detect_platform_from_url(url: str) -> str:
+    url = url.lower()
+    if "temu." in url:
+        return "temu"
+    if "aliexpress." in url:
+        return "aliexpress"
+    if "amazon." in url:
+        return "amazon"
+    if "shein." in url:
+        return "shein"
+    return "unknown"
+
+
 # =========================
-# CSV PARSER (HER FORMATA DAYANIKLI)
+# CSV PARSER (AUTO PLATFORM)
 # =========================
 
-async def parse_csv_feed(content: str, platform: str) -> List[dict]:
+async def parse_csv_auto(content: str) -> List[dict]:
     products = []
     reader = csv.DictReader(io.StringIO(content))
 
     for row in reader:
         try:
-            external_id = (
-                row.get("external_id")
-                or row.get("ProductId")
-                or row.get("id")
-            )
+            url = (
+                row.get("url")
+                or row.get("affiliate_url")
+                or row.get("link")
+                or ""
+            ).strip()
+
+            if not url:
+                continue
+
+            platform = detect_platform_from_url(url)
 
             name = (
                 row.get("name")
-                or row.get("Product Desc")
                 or row.get("title")
-            )
-
-            if not external_id or not name:
-                continue
+                or "Untitled Product"
+            ).strip()
 
             image = (
                 row.get("image")
-                or row.get("Image Url")
                 or row.get("image_url")
                 or ""
             ).strip()
@@ -156,31 +169,16 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
                 image = "https:" + image
 
             product = {
-                "external_id": str(external_id).strip(),
-                "name": str(name).strip(),
-                "description": str(name).strip(),
+                "external_id": url,
+                "platform": platform,
+                "name": name,
+                "description": name,
                 "image": image,
-
-                "price": clean_price(
-                    row.get("price")
-                    or row.get("Discount Price")
-                ),
-
-                "original_price": clean_price(
-                    row.get("original_price")
-                    or row.get("Origin Price")
-                ),
-
-                "affiliate_url": (
-                    row.get("affiliate_url")
-                    or row.get("Promotion Url")
-                    or row.get("link")
-                    or ""
-                ).strip(),
-
+                "price": clean_price(row.get("price")),
+                "original_price": clean_price(row.get("original_price")),
+                "affiliate_url": url,
                 "category": (row.get("category") or "General").strip(),
                 "brand": (row.get("brand") or "").strip() or None,
-                "in_stock": True,
             }
 
             products.append(product)
@@ -191,77 +189,81 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
 
     return products
 
+
 # =========================
 # IMPORT SERVICE
 # =========================
 
-async def import_feed_products(feed_products: List[dict], platform: str) -> Tuple[int, int]:
+async def import_feed_products(feed_products: List[dict]) -> Tuple[int, int]:
     imported = 0
     updated = 0
 
     for fp in feed_products:
-        try:
-            existing = await db.products.find_one(
-                {f"source_ids.{platform}": fp["external_id"]},
-                {"_id": 0},
-            )
+        platform = fp["platform"]
 
-            price_entry = PlatformPrice(
-                platform=platform,
-                price=fp["price"],
-                original_price=fp.get("original_price"),
-                currency="EUR",
-                affiliate_url=fp.get("affiliate_url"),
-                url=fp.get("affiliate_url"),
-                in_stock=True,
-                last_updated=datetime.now(timezone.utc).isoformat(),
-            )
-
-            if existing:
-                prices = [p for p in existing.get("prices", []) if p["platform"] != platform]
-                prices.append(price_entry.model_dump())
-
-                await db.products.update_one(
-                    {"id": existing["id"]},
-                    {"$set": {
-                        "prices": prices,
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                    }},
-                )
-                updated += 1
-
-            else:
-                slug = (fp["category"] or "general").lower().replace(" ", "-")
-
-                product = Product(
-                    name=fp["name"],
-                    description=fp["description"],
-                    image=fp["image"],
-                    images=[fp["image"]] if fp["image"] else [],
-                    category=fp["category"],
-                    category_slug=slug,
-                    prices=[price_entry.model_dump()],
-                    best_price=fp["price"],
-                    best_platform=platform,
-                    brand=fp.get("brand"),
-                    source_ids={platform: fp["external_id"]},
-                    created_at=datetime.now(timezone.utc).isoformat(),
-                    updated_at=datetime.now(timezone.utc).isoformat(),
-                )
-
-                await db.products.insert_one(product.model_dump())
-                imported += 1
-
-        except Exception as e:
-            logger.error(f"Import error: {e}")
+        if platform == "unknown":
             continue
 
+        existing = await db.products.find_one(
+            {f"source_ids.{platform}": fp["external_id"]},
+            {"_id": 0},
+        )
+
+        price_entry = PlatformPrice(
+            platform=platform,
+            price=fp["price"],
+            original_price=fp.get("original_price"),
+            affiliate_url=fp.get("affiliate_url"),
+            url=fp.get("affiliate_url"),
+            last_updated=datetime.now(timezone.utc).isoformat(),
+        )
+
+        if existing:
+            prices = [p for p in existing.get("prices", []) if p["platform"] != platform]
+            prices.append(price_entry.model_dump())
+
+            best = min(prices, key=lambda x: x["price"])
+
+            await db.products.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "prices": prices,
+                    "best_price": best["price"],
+                    "best_platform": best["platform"],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            updated += 1
+
+        else:
+            slug = (fp["category"] or "general").lower().replace(" ", "-")
+
+            product = Product(
+                name=fp["name"],
+                description=fp["description"],
+                image=fp["image"],
+                images=[fp["image"]] if fp["image"] else [],
+                category=fp["category"],
+                category_slug=slug,
+                prices=[price_entry.model_dump()],
+                best_price=fp["price"],
+                best_platform=platform,
+                brand=fp.get("brand"),
+                source_ids={platform: fp["external_id"]},
+                created_at=datetime.now(timezone.utc).isoformat(),
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+            await db.products.insert_one(product.model_dump())
+            imported += 1
+
     return imported, updated
+
 
 # =========================
 # ROUTES
 # =========================
-# 🔧 SITE SETTINGS (Emergent frontend için ZORUNLU)
+
 @api_router.get("/site-settings")
 async def site_settings():
     return {
@@ -269,45 +271,34 @@ async def site_settings():
         "currency": "EUR",
         "platforms": ["aliexpress", "temu", "shein", "amazon"]
     }
+
+
 @api_router.post("/admin/import/csv")
 async def import_products_from_csv(
-    platform: str = Query(...),
     file: UploadFile = File(...),
     admin: str = Depends(verify_admin),
 ):
     raw = await file.read()
     content = raw.decode("utf-8-sig", errors="ignore")
 
-    feed_products = await parse_csv_feed(content, platform)
-    imported, updated = await import_feed_products(feed_products, platform)
+    feed_products = await parse_csv_auto(content)
+    imported, updated = await import_feed_products(feed_products)
 
     return {
         "success": True,
-        "platform": platform,
         "rows_parsed": len(feed_products),
         "imported": imported,
         "updated": updated,
     }
 
+
 @api_router.get("/products")
-async def get_products(
-    limit: int = Query(default=250, le=300),
-    skip: int = 0,
-):
+async def get_products(limit: int = Query(default=500, le=700), skip: int = 0):
     return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
 
-@api_router.get("/products/{product_id}")
-async def get_product(product_id: str):
-    product = await db.products.find_one({"id": product_id}, {"_id": 0})
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return product
-
-@api_router.get("/categories")
-async def get_categories():
-    return await db.categories.find({}, {"_id": 0}).to_list(200)
 
 app.include_router(api_router)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
