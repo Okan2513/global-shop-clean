@@ -30,7 +30,7 @@ mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get("DB_NAME", "global_db")]
 
-app = FastAPI(title="GLOBAL API", version="4.0.0")
+app = FastAPI(title="GLOBAL API", version="5.0.0")
 api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
@@ -69,7 +69,6 @@ class PlatformPrice(BaseModel):
     original_price: Optional[float] = None
     currency: str = "EUR"
     affiliate_url: Optional[str] = None
-    url: Optional[str] = None
     in_stock: bool = True
     last_updated: Optional[str] = None
 
@@ -157,21 +156,43 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     return products
 
 # =========================
-# MATCHING ENGINE
+# SMART MATCHING ENGINE
 # =========================
 
-async def find_matching_product(name: str, category: str):
-    norm_name = normalize_text(name)
+async def find_matching_product(fp: dict, platform: str):
 
-    candidates = await db.products.find(
-        {"category": category},
+    # 1️⃣ external_id varsa direkt eşleştir
+    existing = await db.products.find_one(
+        {f"source_ids.{platform}": fp["external_id"]},
         {"_id": 0}
-    ).limit(300).to_list(300)
+    )
+    if existing:
+        return existing
+
+    norm_name = normalize_text(fp["name"])
+
+    # 2️⃣ birebir isim match
+    exact = await db.products.find_one(
+        {"match_key": norm_name},
+        {"_id": 0}
+    )
+    if exact:
+        return exact
+
+    # 3️⃣ similarity eşleşme
+    candidates = await db.products.find({}, {"_id": 0}).limit(1000).to_list(1000)
+
+    best_match = None
+    best_score = 0
 
     for product in candidates:
         score = similarity(norm_name, product.get("match_key",""))
-        if score >= 0.75:
-            return product
+        if score > best_score:
+            best_score = score
+            best_match = product
+
+    if best_score >= 0.85:
+        return best_match
 
     return None
 
@@ -185,14 +206,13 @@ async def import_feed_products(feed_products: List[dict], platform: str):
 
     for fp in feed_products:
 
-        match = await find_matching_product(fp["name"], fp["category"])
+        match = await find_matching_product(fp, platform)
 
         price_entry = PlatformPrice(
             platform=platform,
             price=fp["price"],
             original_price=fp["original_price"],
             affiliate_url=fp["affiliate_url"],
-            url=fp["affiliate_url"],
             last_updated=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -280,17 +300,14 @@ async def get_products(
     skip: int = 0,
 ):
     return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+
 @api_router.get("/products/{product_id}")
-async def get_product_detail(product_id: str):
-    product = await db.products.find_one(
-        {"id": product_id},
-        {"_id": 0}
-    )
-
+async def get_product(product_id: str):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
-        raise HTTPException(status_code=404, detail="Not Found")
-
+        raise HTTPException(status_code=404, detail="Product not found")
     return product
+
 app.include_router(api_router)
 
 @app.on_event("shutdown")
