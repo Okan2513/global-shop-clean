@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 import secrets
 import csv
 import io
+import re
+from difflib import SequenceMatcher
 
 # =========================
 # BOOTSTRAP
@@ -53,11 +55,7 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
         secrets.compare_digest(credentials.username, ADMIN_USERNAME)
         and secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
     ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid admin credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        raise HTTPException(status_code=401)
     return credentials.username
 
 # =========================
@@ -75,7 +73,6 @@ class PlatformPrice(BaseModel):
     in_stock: bool = True
     last_updated: Optional[str] = None
 
-
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -90,157 +87,144 @@ class Product(BaseModel):
     best_platform: Optional[str] = ""
     brand: Optional[str] = None
     source_ids: Dict[str, str] = {}
+    match_key: Optional[str] = ""
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
 
 # =========================
 # HELPERS
 # =========================
 
 def clean_price(val) -> float:
-    if val is None:
+    if not val:
         return 0.0
-    s = str(val).strip()
-    if not s:
-        return 0.0
-
-    s = s.replace("EUR", "").replace("USD", "").replace("€", "").replace("$", "").strip()
-
-    if "," in s and "." not in s:
-        s = s.replace(",", ".")
-    else:
-        s = s.replace(",", "")
-
+    s = str(val).replace("€","").replace("$","").replace(",","").strip()
     try:
         return float(s)
     except:
         return 0.0
 
+def normalize_text(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
-def detect_platform_from_url(url: str) -> str:
-    url = url.lower()
-    if "temu." in url:
-        return "temu"
-    if "aliexpress." in url:
-        return "aliexpress"
-    if "amazon." in url:
-        return "amazon"
-    if "shein." in url:
-        return "shein"
-    return "unknown"
+def similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
 
+def fix_image_url(url: str) -> str:
+    if not url:
+        return ""
+    url = url.strip()
+    if url.startswith("//"):
+        url = "https:" + url
+    if not url.startswith("http"):
+        return ""
+    return url
+
+def calculate_best_price(prices: List[dict]) -> Tuple[float, str]:
+    if not prices:
+        return 0, ""
+    best = min(prices, key=lambda x: x["price"])
+    return best["price"], best["platform"]
 
 # =========================
-# CSV PARSER (AUTO PLATFORM)
+# CSV PARSER
 # =========================
 
-async def parse_csv_auto(content: str) -> List[dict]:
+async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     products = []
     reader = csv.DictReader(io.StringIO(content))
 
     for row in reader:
-        try:
-            url = (
-                row.get("url")
-                or row.get("affiliate_url")
-                or row.get("link")
-                or ""
-            ).strip()
+        name = row.get("name") or row.get("title")
+        external_id = row.get("external_id") or row.get("id")
 
-            if not url:
-                continue
-
-            platform = detect_platform_from_url(url)
-
-            name = (
-                row.get("name")
-                or row.get("title")
-                or "Untitled Product"
-            ).strip()
-
-            image = (
-                row.get("image")
-                or row.get("image_url")
-                or ""
-            ).strip()
-
-            if image.startswith("//"):
-                image = "https:" + image
-
-            product = {
-                "external_id": url,
-                "platform": platform,
-                "name": name,
-                "description": name,
-                "image": image,
-                "price": clean_price(row.get("price")),
-                "original_price": clean_price(row.get("original_price")),
-                "affiliate_url": url,
-                "category": (row.get("category") or "General").strip(),
-                "brand": (row.get("brand") or "").strip() or None,
-            }
-
-            products.append(product)
-
-        except Exception as e:
-            logger.error(f"CSV row error: {e}")
+        if not name:
             continue
+
+        image = fix_image_url(
+            row.get("image") or row.get("image_url") or ""
+        )
+
+        product = {
+            "external_id": external_id or str(uuid.uuid4()),
+            "name": name.strip(),
+            "image": image,
+            "price": clean_price(row.get("price")),
+            "original_price": clean_price(row.get("original_price")),
+            "affiliate_url": row.get("affiliate_url") or row.get("link") or "",
+            "category": row.get("category") or "General",
+        }
+
+        products.append(product)
 
     return products
 
+# =========================
+# MATCHING ENGINE
+# =========================
+
+async def find_matching_product(name: str, category: str):
+    norm_name = normalize_text(name)
+    candidates = await db.products.find(
+        {"category": category},
+        {"_id": 0}
+    ).to_list(200)
+
+    for product in candidates:
+        score = similarity(norm_name, product.get("match_key",""))
+        if score >= 0.88:
+            return product
+
+    return None
 
 # =========================
 # IMPORT SERVICE
 # =========================
 
-async def import_feed_products(feed_products: List[dict]) -> Tuple[int, int]:
+async def import_feed_products(feed_products: List[dict], platform: str):
     imported = 0
     updated = 0
 
     for fp in feed_products:
-        platform = fp["platform"]
 
-        if platform == "unknown":
-            continue
-
-        existing = await db.products.find_one(
-            {f"source_ids.{platform}": fp["external_id"]},
-            {"_id": 0},
-        )
+        match = await find_matching_product(fp["name"], fp["category"])
 
         price_entry = PlatformPrice(
             platform=platform,
             price=fp["price"],
-            original_price=fp.get("original_price"),
-            affiliate_url=fp.get("affiliate_url"),
-            url=fp.get("affiliate_url"),
+            original_price=fp["original_price"],
+            affiliate_url=fp["affiliate_url"],
+            url=fp["affiliate_url"],
             last_updated=datetime.now(timezone.utc).isoformat(),
         )
 
-        if existing:
-            prices = [p for p in existing.get("prices", []) if p["platform"] != platform]
+        if match:
+            prices = match.get("prices", [])
+            prices = [p for p in prices if p["platform"] != platform]
             prices.append(price_entry.model_dump())
 
-            best = min(prices, key=lambda x: x["price"])
+            best_price, best_platform = calculate_best_price(prices)
 
             await db.products.update_one(
-                {"id": existing["id"]},
+                {"id": match["id"]},
                 {"$set": {
                     "prices": prices,
-                    "best_price": best["price"],
-                    "best_platform": best["platform"],
+                    "best_price": best_price,
+                    "best_platform": best_platform,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
-                }},
+                }}
             )
             updated += 1
 
         else:
-            slug = (fp["category"] or "general").lower().replace(" ", "-")
+            match_key = normalize_text(fp["name"])
+            slug = normalize_text(fp["category"]).replace(" ", "-")
 
             product = Product(
                 name=fp["name"],
-                description=fp["description"],
                 image=fp["image"],
                 images=[fp["image"]] if fp["image"] else [],
                 category=fp["category"],
@@ -248,8 +232,8 @@ async def import_feed_products(feed_products: List[dict]) -> Tuple[int, int]:
                 prices=[price_entry.model_dump()],
                 best_price=fp["price"],
                 best_platform=platform,
-                brand=fp.get("brand"),
                 source_ids={platform: fp["external_id"]},
+                match_key=match_key,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 updated_at=datetime.now(timezone.utc).isoformat(),
             )
@@ -258,7 +242,6 @@ async def import_feed_products(feed_products: List[dict]) -> Tuple[int, int]:
             imported += 1
 
     return imported, updated
-
 
 # =========================
 # ROUTES
@@ -272,33 +255,31 @@ async def site_settings():
         "platforms": ["aliexpress", "temu", "shein", "amazon"]
     }
 
-
 @api_router.post("/admin/import/csv")
 async def import_products_from_csv(
+    platform: str = Query(...),
     file: UploadFile = File(...),
     admin: str = Depends(verify_admin),
 ):
     raw = await file.read()
     content = raw.decode("utf-8-sig", errors="ignore")
 
-    feed_products = await parse_csv_auto(content)
-    imported, updated = await import_feed_products(feed_products)
+    feed_products = await parse_csv_feed(content, platform)
+    imported, updated = await import_feed_products(feed_products, platform)
 
     return {
         "success": True,
-        "rows_parsed": len(feed_products),
+        "platform": platform,
+        "rows": len(feed_products),
         "imported": imported,
         "updated": updated,
     }
 
-
 @api_router.get("/products")
-async def get_products(limit: int = Query(default=500, le=700), skip: int = 0):
-    return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
-
+async def get_products(limit: int = 300):
+    return await db.products.find({}, {"_id": 0}).limit(limit).to_list(limit)
 
 app.include_router(api_router)
-
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
