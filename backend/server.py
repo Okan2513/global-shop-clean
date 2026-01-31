@@ -1,303 +1,188 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File, Depends
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any, Tuple
-import uuid
-from datetime import datetime, timezone
-import secrets
-import csv
+# --- CSV IMPORT (robust) ---
+
 import io
+import csv
 import re
-from difflib import SequenceMatcher
+from typing import Dict, Any, List, Optional, Tuple
+from fastapi import UploadFile, File, Form, APIRouter, HTTPException
 
-# =========================
-# BOOTSTRAP
-# =========================
+router = APIRouter()
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+def _norm_key(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[\s\-_]+", "", s)          # spaces, _, - remove
+    s = re.sub(r"[^a-z0-9]", "", s)         # other symbols remove
+    return s
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def _parse_price(value: Any) -> Tuple[Optional[float], Optional[str]]:
+    """
+    Handles: 'EUR 0.99', '0.99', '€0,99', etc.
+    Returns: (price_float, currency_or_none)
+    """
+    if value is None:
+        return None, None
+    s = str(value).strip()
+    if not s:
+        return None, None
 
-mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get("DB_NAME", "global_db")]
+    # currency guess (EUR, USD, GBP)
+    cur = None
+    mcur = re.search(r"\b([A-Z]{3})\b", s)
+    if mcur:
+        cur = mcur.group(1)
 
-app = FastAPI(title="GLOBAL API", version="6.0.0")
-api_router = APIRouter(prefix="/api")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-security = HTTPBasic()
-
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Yusuf")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "2012")
-
-# =========================
-# AUTH
-# =========================
-
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    if not (
-        secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-        and secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    ):
-        raise HTTPException(status_code=401)
-    return credentials.username
-
-# =========================
-# MODELS
-# =========================
-
-class PlatformPrice(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    platform: str
-    price: float
-    original_price: Optional[float] = None
-    currency: str = "EUR"
-    affiliate_url: Optional[str] = None
-    in_stock: bool = True
-    last_updated: Optional[str] = None
-
-class Product(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    description: Optional[str] = ""
-    image: Optional[str] = ""
-    images: List[str] = []
-    category: Optional[str] = "General"
-    category_slug: Optional[str] = "general"
-    prices: List[dict] = []
-    best_price: Optional[float] = 0
-    best_platform: Optional[str] = ""
-    brand: Optional[str] = None
-    source_ids: Dict[str, str] = {}
-    match_key: Optional[str] = ""
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-
-# =========================
-# HELPERS
-# =========================
-
-def clean_price(val) -> float:
-    if val is None:
-        return 0.0
-    s = str(val).strip()
-    if s == "":
-        return 0.0
-
-    s = s.replace("€", "").replace("$", "").replace("EUR", "").replace("USD", "")
-    s = s.replace("\u00a0", " ").strip()
-
-    if "," in s and "." in s:
-        s = s.replace(".", "")
-        s = s.replace(",", ".")
-    else:
-        s = s.replace(",", ".")
-
-    s = re.sub(r"[^0-9.\-]", "", s)
-
+    # replace comma decimals
+    s2 = s.replace(",", ".")
+    # extract first number
+    mnum = re.search(r"(\d+(\.\d+)?)", s2)
+    if not mnum:
+        return None, cur
     try:
-        return float(s)
+        return float(mnum.group(1)), cur
     except:
-        return 0.0
+        return None, cur
 
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    text = str(text).lower()
-    text = re.sub(r'[^\w\s]', ' ', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+def _sniff_delimiter(sample: str) -> str:
+    try:
+        dialect = csv.Sniffer().sniff(sample)
+        return dialect.delimiter
+    except:
+        return ","  # default
 
-def similarity(a: str, b: str) -> float:
-    if not a or not b:
-        return 0.0
-    return SequenceMatcher(None, a, b).ratio()
+def _guess_mapping(norm_headers: List[str]) -> Dict[str, str]:
+    """
+    returns internal_field -> normalized_header_key
+    internal fields: id, title, url, image, price, currency
+    """
+    hs = set(norm_headers)
 
-def fix_image_url(url: str) -> str:
-    if not url:
-        return "https://via.placeholder.com/500x500?text=No+Image"
-    url = str(url).strip()
-    if url.startswith("//"):
-        url = "https:" + url
-    if not url.startswith("http"):
-        return "https://via.placeholder.com/500x500?text=No+Image"
-    return url
+    def pick(*cands):
+        for c in cands:
+            if c in hs:
+                return c
+        return None
 
-def calculate_best_price(prices: List[dict]) -> Tuple[float, str]:
-    if not prices:
-        return 0, ""
-    best = min(
-        prices,
-        key=lambda x: x.get("price", 0) if x.get("price", 0) > 0 else float("inf")
-    )
-    return best.get("price", 0) or 0, best.get("platform", "") or ""
+    # AliExpress typical headers
+    pid = pick("productid", "product_id", "id", "sku", "productcode")
+    title = pick("productdesc", "title", "name", "productname", "description")
+    url = pick("promotionurl", "producturl", "url", "link", "affiliateurl")
+    img = pick("imageurl", "image", "img", "image_link", "pictureurl")
 
-# =========================
-# CSV PARSER
-# =========================
+    # prefer discount price if exists
+    price = pick("discountprice", "saleprice", "price", "currentprice", "finalprice", "originprice")
+    currency = pick("currency", "cur")
 
-async def parse_csv_feed(content: str, platform: str) -> List[dict]:
-    products = []
-    reader = csv.DictReader(io.StringIO(content))
+    mapping = {}
+    if pid: mapping["id"] = pid
+    if title: mapping["title"] = title
+    if url: mapping["url"] = url
+    if img: mapping["image"] = img
+    if price: mapping["price"] = price
+    if currency: mapping["currency"] = currency
+    return mapping
 
-    for row in reader:
-        name = row.get("name") or row.get("title")
-        if not name:
-            continue
+@router.post("/api/import")
+async def import_products_csv(
+    platform: str = Form(...),
+    file: UploadFile = File(...),
+):
+    platform = (platform or "").strip().lower()
+    if platform not in {"aliexpress", "temu", "shein"}:
+        raise HTTPException(status_code=400, detail="platform must be one of: aliexpress, temu, shein")
 
-        product = {
-            "external_id": row.get("external_id") or row.get("id") or str(uuid.uuid4()),
-            "name": str(name).strip(),
-            "image": fix_image_url(row.get("image") or row.get("image_url")),
-            "price": clean_price(row.get("price")),
-            "original_price": clean_price(row.get("original_price")),
-            "affiliate_url": row.get("affiliate_url") or row.get("link") or "",
-            "category": row.get("category") or "General",
-        }
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty file")
 
-        products.append(product)
+    # decode safely
+    text = raw.decode("utf-8", errors="replace")
+    delim = _sniff_delimiter(text[:2000])
 
-    return products
+    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+    if not reader.fieldnames:
+        return {"success": True, "platform": platform, "rows": 0, "imported": 0, "updated": 0}
 
-# =========================
-# MATCHING
-# =========================
+    # normalize headers
+    original_headers = list(reader.fieldnames)
+    norm_headers = [_norm_key(h) for h in original_headers]
 
-async def find_matching_product(fp: dict, platform: str):
-    existing = await db.products.find_one(
-        {f"source_ids.{platform}": fp.get("external_id")},
-        {"_id": 0}
-    )
-    return existing
+    # map normalized->original for reading
+    norm_to_original = {}
+    for orig, norm in zip(original_headers, norm_headers):
+        if norm and norm not in norm_to_original:
+            norm_to_original[norm] = orig
 
-# =========================
-# IMPORT
-# =========================
+    mapping = _guess_mapping(norm_headers)
 
-async def import_feed_products(feed_products: List[dict], platform: str):
     imported = 0
     updated = 0
+    rows = 0
+    products_to_save: List[Dict[str, Any]] = []
+    skipped_samples: List[Dict[str, Any]] = []
 
-    for fp in feed_products:
+    for row in reader:
+        rows += 1
 
-        match = await find_matching_product(fp, platform)
+        def get(field: str) -> Any:
+            nk = mapping.get(field)
+            if not nk:
+                return None
+            ok = norm_to_original.get(nk)
+            if not ok:
+                return None
+            return row.get(ok)
 
-        price_entry = PlatformPrice(
-            platform=platform,
-            price=fp.get("price", 0.0) or 0.0,
-            original_price=fp.get("original_price", 0.0) or 0.0,
-            affiliate_url=fp.get("affiliate_url", ""),
-            last_updated=datetime.now(timezone.utc).isoformat(),
-        )
+        pid = get("id")
+        title = get("title")
+        url = get("url")
+        image = get("image")
 
-        if match:
-            prices = match.get("prices", []) or []
-            prices = [p for p in prices if p.get("platform") != platform]
-            prices.append(price_entry.model_dump())
+        # price + currency
+        price_raw = get("price")
+        price_val, cur_from_price = _parse_price(price_raw)
 
-            best_price, best_platform = calculate_best_price(prices)
+        cur = get("currency")
+        if cur:
+            cur = str(cur).strip().upper()
+        if not cur and cur_from_price:
+            cur = cur_from_price
 
-            await db.products.update_one(
-                {"id": match["id"]},
-                {"$set": {
-                    "prices": prices,
-                    "best_price": best_price,
-                    "best_platform": best_platform,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }}
-            )
-            updated += 1
-        else:
-            slug = normalize_text(fp.get("category", "General")).replace(" ", "-")
+        # minimal requirements (title + url) OR (title + image)
+        if not title or (not url and not image):
+            if len(skipped_samples) < 5:
+                skipped_samples.append({"reason": "missing_title_or_link", "title": title, "url": url, "image": image})
+            continue
 
-            product = Product(
-                name=fp.get("name", ""),
-                image=fp.get("image", ""),
-                images=[fp.get("image", "")] if fp.get("image", "") else [],
-                category=fp.get("category", "General"),
-                category_slug=slug or "general",
-                prices=[price_entry.model_dump()],
-                best_price=fp.get("price", 0.0) or 0.0,
-                best_platform=platform,
-                source_ids={platform: fp.get("external_id")},
-                created_at=datetime.now(timezone.utc).isoformat(),
-                updated_at=datetime.now(timezone.utc).isoformat(),
-            )
+        doc = {
+            "platform": platform,
+            "external_id": str(pid).strip() if pid else None,
+            "title": str(title).strip(),
+            "url": str(url).strip() if url else None,
+            "image": str(image).strip() if image else None,
+            "price": price_val,
+            "currency": cur or "EUR",
+        }
 
-            await db.products.insert_one(product.model_dump())
-            imported += 1
+        products_to_save.append(doc)
 
-    return imported, updated
+    # ✅ BURADA: sende DB’ye kayıt hangi fonksiyonla yapılıyorsa onu çağır
+    # örnek:
+    # result = await save_products(products_to_save)  # -> (imported_count, updated_count)
+    #
+    # ŞİMDİLİK placeholder:
+    # imported, updated = len(products_to_save), 0
 
-# =========================
-# ROUTES
-# =========================
-
-@api_router.post("/admin/import/csv")
-async def import_products_from_csv(
-    platform: str = Query(...),
-    file: UploadFile = File(...),
-    admin: str = Depends(verify_admin),
-):
-    raw = await file.read()
-    content = raw.decode("utf-8-sig", errors="ignore")
-
-    feed_products = await parse_csv_feed(content, platform)
-    imported, updated = await import_feed_products(feed_products, platform)
+    # !!! bunu kendi DB kaydınla değiştir:
+    imported = len(products_to_save)
+    updated = 0
 
     return {
         "success": True,
         "platform": platform,
-        "rows": len(feed_products),
+        "rows": rows,
         "imported": imported,
         "updated": updated,
+        "detected_delimiter": delim,
+        "detected_mapping": mapping,
+        "skipped_samples": skipped_samples,
     }
-
-# ✅ PLATFORM FILTER + INFINITE SCROLL READY
-@api_router.get("/products")
-async def get_products(
-    platform: Optional[str] = Query(default=None),
-    limit: int = Query(default=20, le=100),
-    skip: int = 0,
-):
-    query = {}
-
-    if platform:
-        query["prices.platform"] = platform.lower()
-
-    products = await db.products.find(
-        query,
-        {"_id": 0}
-    ).skip(skip).limit(limit).to_list(limit)
-
-    return products
-
-@api_router.get("/products/{product_id}")
-async def get_product(product_id: str):
-    product = await db.products.find_one({"id": product_id}, {"_id": 0})
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return product
-
-app.include_router(api_router)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
