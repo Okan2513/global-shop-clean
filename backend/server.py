@@ -95,27 +95,50 @@ class Product(BaseModel):
 # =========================
 
 def clean_price(val) -> float:
-    if not val:
+    if val is None:
         return 0.0
-    s = str(val).replace("€","").replace("$","").replace(",",".").strip()
+    s = str(val).strip()
+    if s == "":
+        return 0.0
+
+    # Temel para temizliği
+    s = s.replace("€", "").replace("$", "").replace("EUR", "").replace("USD", "")
+    s = s.replace("\u00a0", " ").strip()
+
+    # "12,71" -> "12.71"
+    # "1.234,56" gibi değerler gelirse: binlik noktayı kaldırıp virgülü noktaya çevir
+    if "," in s and "." in s:
+        # Genelde EU format: 1.234,56
+        s = s.replace(".", "")
+        s = s.replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+
+    # Sayı dışı karakterleri ayıkla (istisnai durumlar)
+    s = re.sub(r"[^0-9.\-]", "", s)
+
     try:
         return float(s)
     except:
         return 0.0
 
 def normalize_text(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text)
+    if not text:
+        return ""
+    text = str(text).lower()
+    text = re.sub(r'[^\w\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
 def similarity(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
     return SequenceMatcher(None, a, b).ratio()
 
 def fix_image_url(url: str) -> str:
     if not url:
         return "https://via.placeholder.com/500x500?text=No+Image"
-    url = url.strip()
+    url = str(url).strip()
     if url.startswith("//"):
         url = "https:" + url
     if not url.startswith("http"):
@@ -125,8 +148,11 @@ def fix_image_url(url: str) -> str:
 def calculate_best_price(prices: List[dict]) -> Tuple[float, str]:
     if not prices:
         return 0, ""
-    best = min(prices, key=lambda x: x["price"])
-    return best["price"], best["platform"]
+    # 0 fiyatları da dahil eder; ama kullanıcı "en ucuz biz seçmeyelim" dedi
+    # backend yine best_price hesaplıyor, frontend isterse bunu kullanmayabilir.
+    best = min(prices, key=lambda x: x.get("price", 0) if x.get("price", 0) > 0 else float("inf"))
+    bp = best.get("price", 0) or 0
+    return bp, best.get("platform", "") or ""
 
 # =========================
 # CSV PARSER
@@ -143,7 +169,7 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
 
         product = {
             "external_id": row.get("external_id") or row.get("id") or str(uuid.uuid4()),
-            "name": name.strip(),
+            "name": str(name).strip(),
             "image": fix_image_url(row.get("image") or row.get("image_url")),
             "price": clean_price(row.get("price")),
             "original_price": clean_price(row.get("original_price")),
@@ -156,42 +182,75 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     return products
 
 # =========================
-# SMART MATCHING ENGINE
+# PRODUCTION SAFE MATCHING ENGINE
 # =========================
 
-async def find_matching_product(fp: dict, platform: str):
+def extract_model_tokens(text: str):
+    """
+    Ürün adındaki model kodlarını yakalar.
+    Örn: JK25069, H7, S23FE, 17ProMax, 240W vs
+    """
+    if not text:
+        return set()
+    tokens = re.findall(r'\b[A-Za-z0-9\-]{3,}\b', str(text))
+    return set([t.lower() for t in tokens if any(c.isdigit() for c in t)])
 
-    # 1️⃣ external_id varsa direkt eşleştir
+async def find_matching_product(fp: dict, platform: str):
+    """
+    Stabil / güvenli matching:
+    1) Aynı platform + external_id => kesin match
+    2) Aynı kategori içinde:
+        - model token kesişimi => yüksek güven
+        - birebir match_key => kesin match
+        - similarity >= 0.93 => yüksek güven
+    Aksi halde None.
+    """
+    norm_name = normalize_text(fp.get("name", ""))
+    category = fp.get("category", "General")
+    model_tokens = extract_model_tokens(fp.get("name", ""))
+
+    # 1️⃣ Aynı platform + external_id varsa direkt eşleş
     existing = await db.products.find_one(
-        {f"source_ids.{platform}": fp["external_id"]},
+        {f"source_ids.{platform}": fp.get("external_id")},
         {"_id": 0}
     )
     if existing:
         return existing
 
-    norm_name = normalize_text(fp["name"])
+    # norm boşsa eşleştirme yapma
+    if not norm_name:
+        return None
 
-    # 2️⃣ birebir isim match
-    exact = await db.products.find_one(
-        {"match_key": norm_name},
+    # 2️⃣ Aynı kategori içinde ara (kategori farklıysa ASLA birleştirme)
+    candidates = await db.products.find(
+        {"category": category},
         {"_id": 0}
-    )
-    if exact:
-        return exact
-
-    # 3️⃣ similarity eşleşme
-    candidates = await db.products.find({}, {"_id": 0}).limit(1000).to_list(1000)
+    ).limit(1000).to_list(1000)
 
     best_match = None
-    best_score = 0
+    best_score = 0.0
 
     for product in candidates:
-        score = similarity(norm_name, product.get("match_key",""))
+        product_key = product.get("match_key", "") or ""
+        product_name = product.get("name", "") or ""
+
+        # 3️⃣ Model kodu birebir eşleşiyorsa direkt kabul (ama token yoksa geç)
+        if model_tokens:
+            product_tokens = extract_model_tokens(product_name)
+            if product_tokens and model_tokens.intersection(product_tokens):
+                return product
+
+        # 4️⃣ Birebir isim match (match_key normalize)
+        if product_key and norm_name == product_key:
+            return product
+
+        # 5️⃣ Çok yüksek similarity (production güvenli eşik)
+        score = similarity(norm_name, product_key)
         if score > best_score:
             best_score = score
             best_match = product
 
-    if best_score >= 0.85:
+    if best_match and best_score >= 0.93:
         return best_match
 
     return None
@@ -210,22 +269,25 @@ async def import_feed_products(feed_products: List[dict], platform: str):
 
         price_entry = PlatformPrice(
             platform=platform,
-            price=fp["price"],
-            original_price=fp["original_price"],
-            affiliate_url=fp["affiliate_url"],
+            price=fp.get("price", 0.0) or 0.0,
+            original_price=fp.get("original_price", 0.0) or 0.0,
+            affiliate_url=fp.get("affiliate_url", ""),
             last_updated=datetime.now(timezone.utc).isoformat(),
         )
 
         if match:
-            prices = match.get("prices", [])
-            prices = [p for p in prices if p["platform"] != platform]
+            prices = match.get("prices", []) or []
+            # Aynı platform fiyatını replace et
+            prices = [p for p in prices if p.get("platform") != platform]
             prices.append(price_entry.model_dump())
 
             best_price, best_platform = calculate_best_price(prices)
 
-            source_ids = match.get("source_ids", {})
-            source_ids[platform] = fp["external_id"]
+            source_ids = match.get("source_ids", {}) or {}
+            source_ids[platform] = fp.get("external_id")
 
+            # NOT: İstenmeyen durumda farklı platformun görselini overwrite etmiyoruz.
+            # Bu stabil mod: mevcut ürünün image/name'ine dokunma.
             await db.products.update_one(
                 {"id": match["id"]},
                 {"$set": {
@@ -239,19 +301,19 @@ async def import_feed_products(feed_products: List[dict], platform: str):
             updated += 1
 
         else:
-            match_key = normalize_text(fp["name"])
-            slug = normalize_text(fp["category"]).replace(" ", "-")
+            match_key = normalize_text(fp.get("name", ""))
+            slug = normalize_text(fp.get("category", "General")).replace(" ", "-")
 
             product = Product(
-                name=fp["name"],
-                image=fp["image"],
-                images=[fp["image"]],
-                category=fp["category"],
-                category_slug=slug,
+                name=fp.get("name", ""),
+                image=fp.get("image", ""),
+                images=[fp.get("image", "")] if fp.get("image", "") else [],
+                category=fp.get("category", "General"),
+                category_slug=slug or "general",
                 prices=[price_entry.model_dump()],
-                best_price=fp["price"],
+                best_price=fp.get("price", 0.0) or 0.0,
                 best_platform=platform,
-                source_ids={platform: fp["external_id"]},
+                source_ids={platform: fp.get("external_id")},
                 match_key=match_key,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 updated_at=datetime.now(timezone.utc).isoformat(),
