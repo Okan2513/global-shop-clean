@@ -33,6 +33,18 @@ app.add_middleware(
 )
 
 # =========================
+# CREATE INDEX (ÖNEMLİ)
+# =========================
+
+@app.on_event("startup")
+async def startup():
+    await collection.create_index(
+        [("platform", 1), ("external_id", 1)],
+        unique=True,
+        sparse=True
+    )
+
+# =========================
 # HELPERS
 # =========================
 
@@ -45,6 +57,7 @@ def _norm_key(s: str) -> str:
 def _parse_price(value: Any) -> Tuple[Optional[float], Optional[str]]:
     if value is None:
         return None, None
+
     s = str(value).strip()
     if not s:
         return None, None
@@ -54,8 +67,9 @@ def _parse_price(value: Any) -> Tuple[Optional[float], Optional[str]]:
     if mcur:
         cur = mcur.group(1)
 
-    s2 = s.replace(",", ".")
-    mnum = re.search(r"(\d+(\.\d+)?)", s2)
+    s = s.replace(",", ".")
+    mnum = re.search(r"(\d+(\.\d+)?)", s)
+
     if not mnum:
         return None, cur
 
@@ -99,12 +113,15 @@ async def import_products_csv(
     file: UploadFile = File(...)
 ):
     platform = platform.lower()
+
     if platform not in {"aliexpress", "temu", "shein"}:
         raise HTTPException(status_code=400, detail="invalid platform")
 
     raw = await file.read()
-    text = raw.decode("utf-8", errors="replace")
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty file")
 
+    text = raw.decode("utf-8", errors="replace")
     delim = _sniff_delimiter(text[:2000])
     reader = csv.DictReader(io.StringIO(text), delimiter=delim)
 
@@ -114,9 +131,9 @@ async def import_products_csv(
     original_headers = list(reader.fieldnames)
     norm_headers = [_norm_key(h) for h in original_headers]
 
-    norm_to_original = {}
-    for orig, norm in zip(original_headers, norm_headers):
-        norm_to_original[norm] = orig
+    norm_to_original = {
+        norm: orig for orig, norm in zip(original_headers, norm_headers)
+    }
 
     mapping = _guess_mapping(norm_headers)
 
@@ -159,22 +176,28 @@ async def import_products_csv(
             "affiliate_url": url,
             "price": price_val,
             "currency": currency,
-            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
         }
 
-        result = await collection.update_one(
-            {
-                "platform": platform,
-                "external_id": doc["external_id"]
-            },
-            {"$set": doc},
-            upsert=True
-        )
+        # external_id varsa upsert
+        if doc["external_id"]:
+            result = await collection.update_one(
+                {
+                    "platform": platform,
+                    "external_id": doc["external_id"]
+                },
+                {"$set": doc},
+                upsert=True
+            )
 
-        if result.upserted_id:
-            imported += 1
+            if result.upserted_id:
+                imported += 1
+            else:
+                updated += 1
         else:
-            updated += 1
+            # external_id yoksa direkt insert
+            await collection.insert_one(doc)
+            imported += 1
 
     return {
         "success": True,
@@ -186,7 +209,7 @@ async def import_products_csv(
     }
 
 # =========================
-# PRODUCTS LIST (FILTER + SCROLL)
+# PRODUCTS LIST
 # =========================
 
 @app.get("/api/products")
@@ -196,14 +219,24 @@ async def get_products(
     limit: int = 20
 ):
     query = {}
+
     if platform:
         query["platform"] = platform.lower()
 
-    cursor = collection.find(query).skip(skip).limit(limit)
+    cursor = collection.find(query).sort("updated_at", -1).skip(skip).limit(limit)
 
     products = []
+
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
         products.append(doc)
 
     return products
+
+# =========================
+# HEALTH CHECK
+# =========================
+
+@app.get("/")
+async def root():
+    return {"status": "ok"}
