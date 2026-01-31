@@ -3,39 +3,49 @@ import axios from "axios";
 import { ProductCard } from "../components/ProductCard";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
-
 const LIMIT = 20;
 
 export default function ProductsPage() {
   const platforms = ["aliexpress", "temu", "shein"];
 
   const [activePlatform, setActivePlatform] = useState("aliexpress");
-  const [products, setProducts] = useState([]);
-  const [skip, setSkip] = useState(0);
+  const [data, setData] = useState({
+    aliexpress: [],
+    temu: [],
+    shein: [],
+  });
+
+  const [skip, setSkip] = useState({
+    aliexpress: 0,
+    temu: 0,
+    shein: 0,
+  });
+
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    resetAndLoad();
+    loadProducts(activePlatform);
   }, [activePlatform]);
 
-  const resetAndLoad = () => {
-    setProducts([]);
-    setSkip(0);
-    loadProducts(0);
-  };
-
-  const loadProducts = async (customSkip = skip) => {
+  const loadProducts = async (platform) => {
     if (loading) return;
 
     setLoading(true);
 
     try {
       const res = await axios.get(
-        `${API}/products?platform=${activePlatform}&limit=${LIMIT}&skip=${customSkip}`
+        `${API}/products?platform=${platform}&limit=${LIMIT}&skip=${skip[platform]}`
       );
 
-      setProducts(prev => [...prev, ...res.data]);
-      setSkip(prev => prev + LIMIT);
+      setData(prev => ({
+        ...prev,
+        [platform]: [...prev[platform], ...res.data],
+      }));
+
+      setSkip(prev => ({
+        ...prev,
+        [platform]: prev[platform] + LIMIT,
+      }));
     } catch (err) {
       console.error(err);
     } finally {
@@ -43,53 +53,33 @@ export default function ProductsPage() {
     }
   };
 
-  const handleScroll = (e) => {
-    const { scrollTop, clientHeight, scrollHeight } = e.target;
-
-    if (scrollTop + clientHeight >= scrollHeight - 100) {
-      loadProducts();
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#F5F5F5]">
 
-      {/* HEADER TITLE */}
-      <div className="text-center py-6">
-        <h1 className="text-2xl md:text-3xl font-bold">
-          One Site — Multiple Platforms
-        </h1>
-      </div>
-
-      {/* PLATFORM TABS */}
-      <div className="max-w-5xl mx-auto px-4 mb-6">
-        <div className="flex justify-center gap-4">
-
-          {platforms.map((platform) => (
+      {/* 🔥 PLATFORM TABS */}
+      <div className="sticky top-[120px] bg-[#FB7701] text-white z-40">
+        <div className="flex justify-around py-3 font-bold text-sm">
+          {platforms.map(platform => (
             <button
               key={platform}
               onClick={() => setActivePlatform(platform)}
-              className={`px-6 py-3 rounded-full font-bold transition 
-              ${
+              className={`px-4 py-2 rounded-full transition ${
                 activePlatform === platform
-                  ? "bg-[#FB7701] text-white"
-                  : "bg-white text-gray-600 hover:bg-orange-100"
+                  ? "bg-white text-[#FB7701]"
+                  : "opacity-80"
               }`}
             >
               {platform.toUpperCase()}
             </button>
           ))}
-
         </div>
       </div>
 
-      {/* PRODUCTS AREA */}
-      <div
-        onScroll={handleScroll}
-        className="max-w-7xl mx-auto px-4 overflow-y-auto h-[75vh]"
-      >
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-10">
-          {products.map((product) => (
+      {/* 🔥 ACTIVE PLATFORM PRODUCTS */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {data[activePlatform].map(product => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
@@ -99,6 +89,7 @@ export default function ProductsPage() {
             Loading...
           </div>
         )}
+
       </div>
     </div>
   );
