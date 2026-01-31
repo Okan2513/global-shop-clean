@@ -1,148 +1,152 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, TrendingDown, Shield, Zap } from 'lucide-react';
-import { Button } from '../components/ui/button';
-import { ProductCard } from '../components/ProductCard';
-import { Skeleton } from '../components/ui/skeleton';
-import { useLanguage } from '../contexts/LanguageContext';
-import axios from 'axios';
+import { useEffect, useState, useRef } from "react";
+import axios from "axios";
+import { ProductCard } from "../components/ProductCard";
+import { useLanguage } from "../contexts/LanguageContext";
 
-const API = process.env.REACT_APP_BACKEND_URL 
-  ? `${process.env.REACT_APP_BACKEND_URL.replace(/\/$/, "")}/api` 
-  : null;
+const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
+const LIMIT = 20;
 
 export default function HomePage() {
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { language, t } = useLanguage();
+
+  const { language } = useLanguage();
+  const platforms = ["aliexpress", "temu", "shein"];
+
+  const [data, setData] = useState({
+    aliexpress: [],
+    temu: [],
+    shein: [],
+  });
+
+  const [skip, setSkip] = useState({
+    aliexpress: 0,
+    temu: 0,
+    shein: 0,
+  });
+
+  const [loading, setLoading] = useState({
+    aliexpress: false,
+    temu: false,
+    shein: false,
+  });
+
+  const containers = {
+    aliexpress: useRef(null),
+    temu: useRef(null),
+    shein: useRef(null),
+  };
 
   useEffect(() => {
-    fetchData();
-  }, [language]);
+    platforms.forEach(p => loadProducts(p));
+  }, []);
 
-  const fetchData = async () => {
-    if (!API) {
-      console.warn("REACT_APP_BACKEND_URL is not defined");
-      setLoading(false);
-      return;
-    }
-    
+  const loadProducts = async (platform) => {
+    if (loading[platform]) return;
+
+    setLoading(prev => ({ ...prev, [platform]: true }));
+
     try {
-      setLoading(true);
-      const [productsRes, categoriesRes] = await Promise.all([
-        axios.get(`${API}/products?limit=12&lang=${language}`),
-        axios.get(`${API}/categories?lang=${language}`)
-      ]);
-      
-      setProducts(productsRes.data || []);
-      setCategories(categoriesRes.data || []);
-    } catch (error) {
-      console.error('Data fetch error:', error);
+      const res = await axios.get(
+        `${API}/products?platform=${platform}&limit=${LIMIT}&skip=${skip[platform]}`
+      );
+
+      setData(prev => ({
+        ...prev,
+        [platform]: [...prev[platform], ...res.data],
+      }));
+
+      setSkip(prev => ({
+        ...prev,
+        [platform]: prev[platform] + LIMIT,
+      }));
+    } catch (err) {
+      console.error(platform, err);
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, [platform]: false }));
     }
   };
 
-  const getBentoClass = (index) => {
-    const classes = [
-      'col-span-2 row-span-2',
-      'col-span-1',
-      'col-span-1',
-      'row-span-2',
-      'col-span-1',
-      'col-span-2'
-    ];
-    return classes[index % classes.length];
+  const handleScroll = (platform) => {
+    const container = containers[platform].current;
+    if (!container) return;
+
+    if (
+      container.scrollTop + container.clientHeight >=
+      container.scrollHeight - 50
+    ) {
+      loadProducts(platform);
+    }
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-white">
 
-      {/* 🔥 HERO — YARIM YÜKSEKLİK */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#FB7701] via-[#FF8C00] to-[#FFD700] py-8 md:py-12">
-        <div className="max-w-7xl mx-auto px-4 relative z-10">
-          <div className="grid md:grid-cols-2 gap-6 items-center">
-            
-            <div className="text-white">
-              <h1 className="text-3xl md:text-5xl font-bold font-['Outfit'] mb-3">
-                {language === 'tr' ? (
-                  <>Fiyatları<br /><span className="text-[#1A1A1A]">Karşılaştır!</span></>
-                ) : (
-                  <>Comparez.<br /><span className="text-[#1A1A1A]">Achetez Malin!</span></>
-                )}
-              </h1>
-
-              <p className="text-base md:text-lg text-white/90 mb-6">
-                {language === 'tr' 
-                  ? 'AliExpress, Temu ve Shein ürünlerini anında kıyasla.'
-                  : 'Comparez les prix d\'AliExpress, Temu et Shein instantanément.'}
-              </p>
-
-              <Link to="/products">
-                <Button 
-                  size="lg" 
-                  className="bg-[#1A1A1A] text-white rounded-full px-6 py-5 font-bold"
-                >
-                  {t('hero_cta') || 'Démarrer'}
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-            </div>
-
-            <div className="flex justify-center items-center">
-              <img 
-                src="/hero-logo.png"
-                alt="Global Compare & Save"
-                className="max-w-sm w-full opacity-90"
-              />
-            </div>
-
-          </div>
+      {/* HERO — Küçültülmüş */}
+      <section className="bg-gradient-to-br from-[#FB7701] via-[#FF8C00] to-[#FFD700] py-8">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <h1 className="text-3xl md:text-4xl font-bold text-white">
+            One Site — Multiple Platforms
+          </h1>
         </div>
       </section>
 
 
-      {/* Categories */}
-      <section className="py-12">
-        <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-8">
-            {t('categories') || 'Catégories'}
-          </h2>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[150px]">
-            {loading ? (
-              [...Array(4)].map((_, i) => (
-                <Skeleton 
-                  key={i} 
-                  className={`${getBentoClass(i)} rounded-2xl`} 
-                />
-              ))
-            ) : (
-              categories.slice(0, 6).map((cat, i) => (
-                <Link 
-                  key={cat.id} 
-                  to={`/products/${cat.slug}`} 
-                  className={`relative overflow-hidden rounded-2xl group ${getBentoClass(i)}`}
-                >
-                  <img 
-                    src={cat.image} 
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                    alt={cat.name} 
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-end p-4">
-                    <h3 className="text-white font-bold">
-                      {language === 'tr' 
-                        ? (cat.name_tr || cat.name) 
-                        : cat.name}
-                    </h3>
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
+      {/* PLATFORM HEADER BAR */}
+      <div className="bg-[#FB7701] text-white">
+        <div className="max-w-7xl mx-auto grid grid-cols-3 text-center font-bold py-3">
+          <div>ALIEXPRESS</div>
+          <div>TEMU</div>
+          <div>SHEIN</div>
         </div>
-      </section>
+      </div>
+
+
+      {/* DESKTOP 3 KOLON */}
+      <div className="hidden md:grid grid-cols-3 gap-6 max-w-7xl mx-auto px-4 py-6 h-[75vh]">
+
+        {platforms.map(platform => (
+          <div key={platform} className="bg-white rounded-xl shadow flex flex-col">
+
+            <div
+              ref={containers[platform]}
+              onScroll={() => handleScroll(platform)}
+              className="overflow-y-auto p-4 space-y-4"
+            >
+              {data[platform].map(product => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+
+              {loading[platform] && (
+                <div className="text-center text-sm text-gray-400 py-4">
+                  Loading...
+                </div>
+              )}
+            </div>
+
+          </div>
+        ))}
+
+      </div>
+
+
+      {/* MOBILE — Horizontal Platform Switch */}
+      <div className="md:hidden px-4 py-6 space-y-6">
+
+        {platforms.map(platform => (
+          <div key={platform}>
+            <h2 className="font-bold text-lg mb-3 text-[#FB7701]">
+              {platform.toUpperCase()}
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              {data[platform].slice(0, 10).map(product => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+
+          </div>
+        ))}
+
+      </div>
 
     </div>
   );
