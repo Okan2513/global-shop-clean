@@ -14,8 +14,6 @@ import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// 🔧 HATAYI ÇÖZEN KISIM: Arama kutusu artık ana Header'ın dışında tanımlandı.
-// Böylece her harf yazdığında tüm sayfa değil, sadece input güncelleniyor.
 const SearchInput = memo(({ 
   searchQuery, 
   setSearchQuery, 
@@ -27,10 +25,9 @@ const SearchInput = memo(({
   t, 
   isMobile = false 
 }) => {
-  const searchRef = useRef(null);
 
   return (
-    <div ref={!isMobile ? searchRef : null} className="relative w-full">
+    <div className="relative w-full">
       <form onSubmit={handleSearch}>
         <div className="relative">
           <Input
@@ -91,7 +88,7 @@ export const Header = () => {
           const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
           setSuggestions(response.data.suggestions || []);
           setShowSuggestions(true);
-        } catch (error) {
+        } catch {
           setSuggestions([]);
         }
       }, 200);
@@ -128,14 +125,21 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
+
+      {/* 🔥 YENİ ÜST BANNER */}
       <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-sm font-medium">🎉 Amazon, AliExpress, Temu ve Shein Fiyatlarını Karşılaştırın!</p>
+          <p className="text-sm md:text-base font-semibold tracking-wide">
+            AliExpress • Temu • Shein
+            <span className="mx-2 opacity-60">|</span>
+            One Site — Multiple Platforms
+          </p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
+
           <Link to="/" className="flex-shrink-0">
             <h1 className="text-3xl font-bold font-['Outfit']">
               <span className="text-[#FB7701]">GLO</span>
@@ -160,8 +164,12 @@ export const Header = () => {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 hover:bg-[#FB7701]/10">
-                  <span className="text-lg">{availableLanguages.find(l => l.code === language)?.flag || '🌐'}</span>
-                  <span className="hidden sm:inline uppercase font-bold text-gray-700">{language}</span>
+                  <span className="text-lg">
+                    {availableLanguages.find(l => l.code === language)?.flag || '🌐'}
+                  </span>
+                  <span className="hidden sm:inline uppercase font-bold text-gray-700">
+                    {language}
+                  </span>
                   <ChevronDown className="h-3 w-3 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
@@ -174,8 +182,11 @@ export const Header = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* 🔥 Tüm Ürünler yerine Kategoriler */}
             <Link to="/products" className="hidden md:block">
-              <Button variant="ghost" className="font-bold text-gray-700">{t('all_products')}</Button>
+              <Button variant="ghost" className="font-bold text-gray-700">
+                {t('categories') || 'Kategoriler'}
+              </Button>
             </Link>
 
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -199,35 +210,6 @@ export const Header = () => {
         </div>
       </div>
 
-      <nav className="hidden md:block border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-4">
-          <ul className="flex items-center gap-1 py-2 overflow-x-auto hide-scrollbar">
-            {categories.map((cat) => (
-              <li key={cat.slug}>
-                <Link to={`/products/${cat.slug}`} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-[#FB7701] rounded-full transition-colors">
-                  {renderCategoryName(cat.name)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </nav>
-
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[160px] bg-white z-[100] border-t p-4 space-y-6">
-          <Link to="/products" className="flex items-center gap-3 p-4 bg-orange-50 rounded-2xl text-[#FB7701] font-bold" onClick={() => setMobileMenuOpen(false)}>
-            <ShoppingBag className="h-5 w-5" /> {t('all_products')}
-          </Link>
-          <div className="space-y-1">
-            <h3 className="px-4 text-xs font-black text-gray-400 uppercase mb-2">{t('categories')}</h3>
-            {categories.map((cat) => (
-              <Link key={cat.slug} to={`/products/${cat.slug}`} className="block p-4 text-gray-700 font-semibold border-b border-gray-50" onClick={() => setMobileMenuOpen(false)}>
-                {renderCategoryName(cat.name)}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </header>
   );
 };
