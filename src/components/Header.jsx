@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, ChevronDown, ShoppingBag } from 'lucide-react';
+import { Search, Menu, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -32,7 +32,7 @@ const SearchInput = memo(({
         <div className="relative">
           <Input
             type="text"
-            placeholder={t('search_placeholder') || 'Ürün ara...'}
+            placeholder={t('search_placeholder') || 'Search product...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchQuery.length >= 2 && setShowSuggestions(true)}
@@ -53,7 +53,7 @@ const SearchInput = memo(({
           {suggestions.map((item, idx) => (
             <div 
               key={idx} 
-              className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
+              className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
               onClick={() => {
                 navigate(`/products?search=${encodeURIComponent(item.name)}`);
                 setShowSuggestions(false);
@@ -61,7 +61,6 @@ const SearchInput = memo(({
               }}
             >
               <span className="text-sm font-medium">{item.name}</span>
-              <span className="text-xs text-orange-500 font-bold">{item.best_platform}</span>
             </div>
           ))}
         </div>
@@ -85,7 +84,9 @@ export const Header = () => {
     if (searchQuery.trim().length >= 2) {
       debounceRef.current = setTimeout(async () => {
         try {
-          const response = await axios.get(`${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`);
+          const response = await axios.get(
+            `${API}/products/search/suggestions?q=${encodeURIComponent(searchQuery)}&lang=${language}`
+          );
           setSuggestions(response.data.suggestions || []);
           setShowSuggestions(true);
         } catch {
@@ -101,45 +102,29 @@ export const Header = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      setShowSuggestions(false);
       navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery('');
+      setShowSuggestions(false);
     }
-  };
-
-  const categories = [
-    { name: t('cat_electronics') || 'Electronics', slug: 'electronics' },
-    { name: t('cat_fashion') || 'Fashion', slug: 'fashion' },
-    { name: t('cat_home') || 'Home & Garden', slug: 'home-garden' },
-    { name: t('cat_beauty') || 'Beauty', slug: 'beauty' },
-    { name: t('cat_sports') || 'Sports', slug: 'sports' },
-    { name: t('cat_bags') || 'Bags', slug: 'bags' },
-  ];
-
-  const renderCategoryName = (name) => {
-    if (name && name.startsWith('cat_')) {
-      return name.replace('cat_', '').replace('_', ' ');
-    }
-    return name;
   };
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
 
-      {/* 🔥 YENİ ÜST BANNER */}
-      <div className="bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white py-2">
+      {/* 🔥 CLEAN TOP BAR */}
+      <div className="bg-[#FB7701] text-white py-2">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-sm md:text-base font-semibold tracking-wide">
-            AliExpress • Temu • Shein
-            <span className="mx-2 opacity-60">|</span>
+          <p className="text-sm font-semibold tracking-wide">
             One Site — Multiple Platforms
           </p>
         </div>
       </div>
 
+      {/* MAIN HEADER */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
 
+          {/* LOGO */}
           <Link to="/" className="flex-shrink-0">
             <h1 className="text-3xl font-bold font-['Outfit']">
               <span className="text-[#FB7701]">GLO</span>
@@ -147,6 +132,7 @@ export const Header = () => {
             </h1>
           </Link>
 
+          {/* DESKTOP SEARCH */}
           <div className="hidden md:flex flex-1 max-w-xl">
             <SearchInput 
               searchQuery={searchQuery}
@@ -160,7 +146,9 @@ export const Header = () => {
             />
           </div>
 
+          {/* LANGUAGE + MOBILE MENU */}
           <div className="flex items-center gap-3">
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 hover:bg-[#FB7701]/10">
@@ -173,31 +161,35 @@ export const Header = () => {
                   <ChevronDown className="h-3 w-3 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-48 bg-white border-gray-100 shadow-xl">
                 {availableLanguages.map((lang) => (
-                  <DropdownMenuItem key={lang.code} onClick={() => setLanguage(lang.code)} className="cursor-pointer">
+                  <DropdownMenuItem
+                    key={lang.code}
+                    onClick={() => setLanguage(lang.code)}
+                    className="cursor-pointer"
+                  >
                     {lang.flag} {lang.name}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* 🔥 Tüm Ürünler yerine Kategoriler */}
-            <Link to="/products" className="hidden md:block">
-              <Button variant="ghost" className="font-bold text-gray-700">
-                {t('categories') || 'Kategoriler'}
-              </Button>
-            </Link>
-
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
           </div>
         </div>
 
+        {/* MOBILE SEARCH */}
         <div className="md:hidden mt-4">
           <SearchInput 
-            isMobile={true}
+            isMobile
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             handleSearch={handleSearch}
@@ -209,7 +201,6 @@ export const Header = () => {
           />
         </div>
       </div>
-
     </header>
   );
 };
