@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # =========================
-# CREATE INDEX (ÖNEMLİ)
+# CREATE INDEX
 # =========================
 
 @app.on_event("startup")
@@ -179,7 +179,6 @@ async def import_products_csv(
             "updated_at": datetime.utcnow(),
         }
 
-        # external_id varsa upsert
         if doc["external_id"]:
             result = await collection.update_one(
                 {
@@ -195,7 +194,6 @@ async def import_products_csv(
             else:
                 updated += 1
         else:
-            # external_id yoksa direkt insert
             await collection.insert_one(doc)
             imported += 1
 
@@ -209,7 +207,7 @@ async def import_products_csv(
     }
 
 # =========================
-# PRODUCTS LIST
+# PRODUCTS LIST (🔥 FIXED)
 # =========================
 
 @app.get("/api/products")
@@ -228,8 +226,23 @@ async def get_products(
     products = []
 
     async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        products.append(doc)
+        doc_id = str(doc["_id"])
+
+        product_obj = {
+            "id": doc_id,
+            "name": doc.get("name"),
+            "image": doc.get("image"),
+            "discount_percent": 0,
+            "prices": [
+                {
+                    "platform": doc.get("platform"),
+                    "price": doc.get("price"),
+                    "affiliate_url": doc.get("affiliate_url"),
+                }
+            ]
+        }
+
+        products.append(product_obj)
 
     return products
 
