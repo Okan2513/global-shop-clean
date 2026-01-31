@@ -1,42 +1,64 @@
-# --- CSV IMPORT (robust) ---
-
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from typing import List, Dict, Any, Optional, Tuple
+import os
 import io
 import csv
 import re
-from typing import Dict, Any, List, Optional, Tuple
-from fastapi import UploadFile, File, Form, APIRouter, HTTPException
+from datetime import datetime
+from dotenv import load_dotenv
 
-router = APIRouter()
+# =========================
+# CONFIG
+# =========================
+
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "global_db")
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+collection = db["products"]
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =========================
+# HELPERS
+# =========================
 
 def _norm_key(s: str) -> str:
     s = (s or "").strip().lower()
-    s = re.sub(r"[\s\-_]+", "", s)          # spaces, _, - remove
-    s = re.sub(r"[^a-z0-9]", "", s)         # other symbols remove
+    s = re.sub(r"[\s\-_]+", "", s)
+    s = re.sub(r"[^a-z0-9]", "", s)
     return s
 
 def _parse_price(value: Any) -> Tuple[Optional[float], Optional[str]]:
-    """
-    Handles: 'EUR 0.99', '0.99', '€0,99', etc.
-    Returns: (price_float, currency_or_none)
-    """
     if value is None:
         return None, None
     s = str(value).strip()
     if not s:
         return None, None
 
-    # currency guess (EUR, USD, GBP)
     cur = None
     mcur = re.search(r"\b([A-Z]{3})\b", s)
     if mcur:
         cur = mcur.group(1)
 
-    # replace comma decimals
     s2 = s.replace(",", ".")
-    # extract first number
     mnum = re.search(r"(\d+(\.\d+)?)", s2)
     if not mnum:
         return None, cur
+
     try:
         return float(mnum.group(1)), cur
     except:
@@ -47,13 +69,9 @@ def _sniff_delimiter(sample: str) -> str:
         dialect = csv.Sniffer().sniff(sample)
         return dialect.delimiter
     except:
-        return ","  # default
+        return ","
 
 def _guess_mapping(norm_headers: List[str]) -> Dict[str, str]:
-    """
-    returns internal_field -> normalized_header_key
-    internal fields: id, title, url, image, price, currency
-    """
     hs = set(norm_headers)
 
     def pick(*cands):
@@ -62,68 +80,54 @@ def _guess_mapping(norm_headers: List[str]) -> Dict[str, str]:
                 return c
         return None
 
-    # AliExpress typical headers
-    pid = pick("productid", "product_id", "id", "sku", "productcode")
-    title = pick("productdesc", "title", "name", "productname", "description")
-    url = pick("promotionurl", "producturl", "url", "link", "affiliateurl")
-    img = pick("imageurl", "image", "img", "image_link", "pictureurl")
+    return {
+        "id": pick("productid", "product_id", "id", "sku"),
+        "title": pick("productdesc", "title", "name", "productname"),
+        "url": pick("promotionurl", "producturl", "url", "link"),
+        "image": pick("imageurl", "image", "img"),
+        "price": pick("discountprice", "saleprice", "price", "originprice"),
+        "currency": pick("currency")
+    }
 
-    # prefer discount price if exists
-    price = pick("discountprice", "saleprice", "price", "currentprice", "finalprice", "originprice")
-    currency = pick("currency", "cur")
+# =========================
+# CSV IMPORT
+# =========================
 
-    mapping = {}
-    if pid: mapping["id"] = pid
-    if title: mapping["title"] = title
-    if url: mapping["url"] = url
-    if img: mapping["image"] = img
-    if price: mapping["price"] = price
-    if currency: mapping["currency"] = currency
-    return mapping
-
-@router.post("/api/import")
+@app.post("/api/import")
 async def import_products_csv(
     platform: str = Form(...),
-    file: UploadFile = File(...),
+    file: UploadFile = File(...)
 ):
-    platform = (platform or "").strip().lower()
+    platform = platform.lower()
     if platform not in {"aliexpress", "temu", "shein"}:
-        raise HTTPException(status_code=400, detail="platform must be one of: aliexpress, temu, shein")
+        raise HTTPException(status_code=400, detail="invalid platform")
 
     raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="empty file")
-
-    # decode safely
     text = raw.decode("utf-8", errors="replace")
+
     delim = _sniff_delimiter(text[:2000])
-
     reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-    if not reader.fieldnames:
-        return {"success": True, "platform": platform, "rows": 0, "imported": 0, "updated": 0}
 
-    # normalize headers
+    if not reader.fieldnames:
+        return {"success": False, "error": "no headers"}
+
     original_headers = list(reader.fieldnames)
     norm_headers = [_norm_key(h) for h in original_headers]
 
-    # map normalized->original for reading
     norm_to_original = {}
     for orig, norm in zip(original_headers, norm_headers):
-        if norm and norm not in norm_to_original:
-            norm_to_original[norm] = orig
+        norm_to_original[norm] = orig
 
     mapping = _guess_mapping(norm_headers)
 
     imported = 0
     updated = 0
     rows = 0
-    products_to_save: List[Dict[str, Any]] = []
-    skipped_samples: List[Dict[str, Any]] = []
 
     for row in reader:
         rows += 1
 
-        def get(field: str) -> Any:
+        def get(field):
             nk = mapping.get(field)
             if not nk:
                 return None
@@ -137,52 +141,69 @@ async def import_products_csv(
         url = get("url")
         image = get("image")
 
-        # price + currency
         price_raw = get("price")
         price_val, cur_from_price = _parse_price(price_raw)
 
-        cur = get("currency")
-        if cur:
-            cur = str(cur).strip().upper()
-        if not cur and cur_from_price:
-            cur = cur_from_price
+        currency = get("currency")
+        if not currency:
+            currency = cur_from_price or "EUR"
 
-        # minimal requirements (title + url) OR (title + image)
-        if not title or (not url and not image):
-            if len(skipped_samples) < 5:
-                skipped_samples.append({"reason": "missing_title_or_link", "title": title, "url": url, "image": image})
+        if not title or not url:
             continue
 
         doc = {
             "platform": platform,
-            "external_id": str(pid).strip() if pid else None,
-            "title": str(title).strip(),
-            "url": str(url).strip() if url else None,
-            "image": str(image).strip() if image else None,
+            "external_id": str(pid) if pid else None,
+            "name": title.strip(),
+            "image": image,
+            "affiliate_url": url,
             "price": price_val,
-            "currency": cur or "EUR",
+            "currency": currency,
+            "created_at": datetime.utcnow(),
         }
 
-        products_to_save.append(doc)
+        result = await collection.update_one(
+            {
+                "platform": platform,
+                "external_id": doc["external_id"]
+            },
+            {"$set": doc},
+            upsert=True
+        )
 
-    # ✅ BURADA: sende DB’ye kayıt hangi fonksiyonla yapılıyorsa onu çağır
-    # örnek:
-    # result = await save_products(products_to_save)  # -> (imported_count, updated_count)
-    #
-    # ŞİMDİLİK placeholder:
-    # imported, updated = len(products_to_save), 0
-
-    # !!! bunu kendi DB kaydınla değiştir:
-    imported = len(products_to_save)
-    updated = 0
+        if result.upserted_id:
+            imported += 1
+        else:
+            updated += 1
 
     return {
         "success": True,
-        "platform": platform,
         "rows": rows,
         "imported": imported,
         "updated": updated,
-        "detected_delimiter": delim,
-        "detected_mapping": mapping,
-        "skipped_samples": skipped_samples,
+        "delimiter": delim,
+        "mapping": mapping
     }
+
+# =========================
+# PRODUCTS LIST (FILTER + SCROLL)
+# =========================
+
+@app.get("/api/products")
+async def get_products(
+    platform: Optional[str] = Query(None),
+    skip: int = 0,
+    limit: int = 20
+):
+    query = {}
+    if platform:
+        query["platform"] = platform.lower()
+
+    cursor = collection.find(query).skip(skip).limit(limit)
+
+    products = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        products.append(doc)
+
+    return products
