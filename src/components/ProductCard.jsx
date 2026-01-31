@@ -1,14 +1,10 @@
-import { Link } from 'react-router-dom';
-import { useLanguage } from '../contexts/LanguageContext';
-
 export const ProductCard = ({ product }) => {
-  const { language } = useLanguage();
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("fr-FR", {
       style: 'currency',
       currency: product.currency || 'EUR'
-    }).format(price || 0);
+    }).format(price);
   };
 
   const goToStore = (e) => {
@@ -23,9 +19,9 @@ export const ProductCard = ({ product }) => {
   return (
     <div className="border rounded-xl bg-white shadow hover:shadow-lg transition">
 
-      <Link to={`/product/${product._id}`}>
+      <Link to={`/product/${product.id}`}>
         <img
-          src={product.image || 'https://via.placeholder.com/300'}
+          src={product.image}
           alt={product.name}
           className="w-full h-48 object-cover rounded-t-xl"
         />
@@ -44,7 +40,7 @@ export const ProductCard = ({ product }) => {
           onClick={goToStore}
           className="w-full bg-[#FB7701] text-white py-2 rounded-lg font-bold hover:bg-orange-600"
         >
-          Mağazaya Git
+          Seç
         </button>
       </div>
     </div>
