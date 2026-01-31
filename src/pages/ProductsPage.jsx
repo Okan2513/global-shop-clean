@@ -3,11 +3,11 @@ import axios from "axios";
 import { ProductCard } from "../components/ProductCard";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
-
 const LIMIT = 20;
 
 export default function ProductsPage() {
   const platforms = ["aliexpress", "temu", "shein"];
+  const [activePlatform, setActivePlatform] = useState("aliexpress");
 
   const [data, setData] = useState({
     aliexpress: [],
@@ -78,18 +78,17 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen bg-[#F5F5F5] px-4 py-6">
       <div className="max-w-7xl mx-auto">
-        
+
         <h1 className="text-2xl font-bold text-center mb-6">
           One Site — Multiple Platforms
         </h1>
 
-        {/* DESKTOP */}
+        {/* ================= DESKTOP ================= */}
         <div className="hidden md:grid grid-cols-3 gap-6 h-[80vh]">
-
           {platforms.map(platform => (
             <div key={platform} className="flex flex-col bg-white rounded-xl shadow">
 
-              <div className="p-4 font-bold text-center border-b">
+              <div className="p-4 font-bold text-center border-b bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white">
                 {platform.toUpperCase()}
               </div>
 
@@ -111,23 +110,45 @@ export default function ProductsPage() {
 
             </div>
           ))}
-
         </div>
 
-        {/* MOBILE */}
-        <div className="md:hidden space-y-6">
-          {platforms.map(platform => (
-            <div key={platform}>
-              <h2 className="font-bold text-lg mb-3">
+        {/* ================= MOBILE ================= */}
+        <div className="md:hidden">
+
+          {/* Platform Tabs */}
+          <div className="flex mb-4 rounded-full overflow-hidden bg-white shadow">
+            {platforms.map(platform => (
+              <button
+                key={platform}
+                onClick={() => setActivePlatform(platform)}
+                className={`flex-1 py-3 text-sm font-bold transition ${
+                  activePlatform === platform
+                    ? "bg-gradient-to-r from-[#FB7701] to-[#FFD700] text-white"
+                    : "text-gray-600"
+                }`}
+              >
                 {platform.toUpperCase()}
-              </h2>
-              <div className="grid grid-cols-2 gap-3">
-                {data[platform].slice(0, 10).map(product => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
+              </button>
+            ))}
+          </div>
+
+          {/* Active Platform Content */}
+          <div
+            ref={containers[activePlatform]}
+            onScroll={() => handleScroll(activePlatform)}
+            className="h-[70vh] overflow-y-auto space-y-4 pr-1"
+          >
+            {data[activePlatform].map(product => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+
+            {loading[activePlatform] && (
+              <div className="text-center text-sm text-gray-400 py-4">
+                Loading...
               </div>
-            </div>
-          ))}
+            )}
+          </div>
+
         </div>
 
       </div>
