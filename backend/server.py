@@ -30,7 +30,7 @@ mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get("DB_NAME", "global_db")]
 
-app = FastAPI(title="GLOBAL API", version="5.0.0")
+app = FastAPI(title="GLOBAL API", version="6.0.0")
 api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
@@ -101,20 +101,15 @@ def clean_price(val) -> float:
     if s == "":
         return 0.0
 
-    # Temel para temizliği
     s = s.replace("€", "").replace("$", "").replace("EUR", "").replace("USD", "")
     s = s.replace("\u00a0", " ").strip()
 
-    # "12,71" -> "12.71"
-    # "1.234,56" gibi değerler gelirse: binlik noktayı kaldırıp virgülü noktaya çevir
     if "," in s and "." in s:
-        # Genelde EU format: 1.234,56
         s = s.replace(".", "")
         s = s.replace(",", ".")
     else:
         s = s.replace(",", ".")
 
-    # Sayı dışı karakterleri ayıkla (istisnai durumlar)
     s = re.sub(r"[^0-9.\-]", "", s)
 
     try:
@@ -148,11 +143,11 @@ def fix_image_url(url: str) -> str:
 def calculate_best_price(prices: List[dict]) -> Tuple[float, str]:
     if not prices:
         return 0, ""
-    # 0 fiyatları da dahil eder; ama kullanıcı "en ucuz biz seçmeyelim" dedi
-    # backend yine best_price hesaplıyor, frontend isterse bunu kullanmayabilir.
-    best = min(prices, key=lambda x: x.get("price", 0) if x.get("price", 0) > 0 else float("inf"))
-    bp = best.get("price", 0) or 0
-    return bp, best.get("platform", "") or ""
+    best = min(
+        prices,
+        key=lambda x: x.get("price", 0) if x.get("price", 0) > 0 else float("inf")
+    )
+    return best.get("price", 0) or 0, best.get("platform", "") or ""
 
 # =========================
 # CSV PARSER
@@ -182,81 +177,18 @@ async def parse_csv_feed(content: str, platform: str) -> List[dict]:
     return products
 
 # =========================
-# PRODUCTION SAFE MATCHING ENGINE
+# MATCHING
 # =========================
 
-def extract_model_tokens(text: str):
-    """
-    Ürün adındaki model kodlarını yakalar.
-    Örn: JK25069, H7, S23FE, 17ProMax, 240W vs
-    """
-    if not text:
-        return set()
-    tokens = re.findall(r'\b[A-Za-z0-9\-]{3,}\b', str(text))
-    return set([t.lower() for t in tokens if any(c.isdigit() for c in t)])
-
 async def find_matching_product(fp: dict, platform: str):
-    """
-    Stabil / güvenli matching:
-    1) Aynı platform + external_id => kesin match
-    2) Aynı kategori içinde:
-        - model token kesişimi => yüksek güven
-        - birebir match_key => kesin match
-        - similarity >= 0.93 => yüksek güven
-    Aksi halde None.
-    """
-    norm_name = normalize_text(fp.get("name", ""))
-    category = fp.get("category", "General")
-    model_tokens = extract_model_tokens(fp.get("name", ""))
-
-    # 1️⃣ Aynı platform + external_id varsa direkt eşleş
     existing = await db.products.find_one(
         {f"source_ids.{platform}": fp.get("external_id")},
         {"_id": 0}
     )
-    if existing:
-        return existing
-
-    # norm boşsa eşleştirme yapma
-    if not norm_name:
-        return None
-
-    # 2️⃣ Aynı kategori içinde ara (kategori farklıysa ASLA birleştirme)
-    candidates = await db.products.find(
-        {"category": category},
-        {"_id": 0}
-    ).limit(1000).to_list(1000)
-
-    best_match = None
-    best_score = 0.0
-
-    for product in candidates:
-        product_key = product.get("match_key", "") or ""
-        product_name = product.get("name", "") or ""
-
-        # 3️⃣ Model kodu birebir eşleşiyorsa direkt kabul (ama token yoksa geç)
-        if model_tokens:
-            product_tokens = extract_model_tokens(product_name)
-            if product_tokens and model_tokens.intersection(product_tokens):
-                return product
-
-        # 4️⃣ Birebir isim match (match_key normalize)
-        if product_key and norm_name == product_key:
-            return product
-
-        # 5️⃣ Çok yüksek similarity (production güvenli eşik)
-        score = similarity(norm_name, product_key)
-        if score > best_score:
-            best_score = score
-            best_match = product
-
-    if best_match and best_score >= 0.93:
-        return best_match
-
-    return None
+    return existing
 
 # =========================
-# IMPORT SERVICE
+# IMPORT
 # =========================
 
 async def import_feed_products(feed_products: List[dict], platform: str):
@@ -277,31 +209,22 @@ async def import_feed_products(feed_products: List[dict], platform: str):
 
         if match:
             prices = match.get("prices", []) or []
-            # Aynı platform fiyatını replace et
             prices = [p for p in prices if p.get("platform") != platform]
             prices.append(price_entry.model_dump())
 
             best_price, best_platform = calculate_best_price(prices)
 
-            source_ids = match.get("source_ids", {}) or {}
-            source_ids[platform] = fp.get("external_id")
-
-            # NOT: İstenmeyen durumda farklı platformun görselini overwrite etmiyoruz.
-            # Bu stabil mod: mevcut ürünün image/name'ine dokunma.
             await db.products.update_one(
                 {"id": match["id"]},
                 {"$set": {
                     "prices": prices,
                     "best_price": best_price,
                     "best_platform": best_platform,
-                    "source_ids": source_ids,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }}
             )
             updated += 1
-
         else:
-            match_key = normalize_text(fp.get("name", ""))
             slug = normalize_text(fp.get("category", "General")).replace(" ", "-")
 
             product = Product(
@@ -314,7 +237,6 @@ async def import_feed_products(feed_products: List[dict], platform: str):
                 best_price=fp.get("price", 0.0) or 0.0,
                 best_platform=platform,
                 source_ids={platform: fp.get("external_id")},
-                match_key=match_key,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 updated_at=datetime.now(timezone.utc).isoformat(),
             )
@@ -327,14 +249,6 @@ async def import_feed_products(feed_products: List[dict], platform: str):
 # =========================
 # ROUTES
 # =========================
-
-@api_router.get("/site-settings")
-async def site_settings():
-    return {
-        "site_name": "GLOBAL",
-        "currency": "EUR",
-        "platforms": ["aliexpress", "temu", "shein", "amazon"]
-    }
 
 @api_router.post("/admin/import/csv")
 async def import_products_from_csv(
@@ -356,12 +270,24 @@ async def import_products_from_csv(
         "updated": updated,
     }
 
+# ✅ PLATFORM FILTER + INFINITE SCROLL READY
 @api_router.get("/products")
 async def get_products(
-    limit: int = Query(default=1000, le=1000),
+    platform: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, le=100),
     skip: int = 0,
 ):
-    return await db.products.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    query = {}
+
+    if platform:
+        query["prices.platform"] = platform.lower()
+
+    products = await db.products.find(
+        query,
+        {"_id": 0}
+    ).skip(skip).limit(limit).to_list(limit)
+
+    return products
 
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str):
