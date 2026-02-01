@@ -1,6 +1,18 @@
 import { Link } from "react-router-dom";
+import { useLanguage } from "../contexts/LanguageContext";
 
 export const ProductCard = ({ product }) => {
+  const { language } = useLanguage();
+
+  const buttonLabels = {
+    tr: "Seç",
+    fr: "Choisir",
+    en: "Buy",
+    de: "Kaufen",
+    it: "Acquista",
+    es: "Comprar",
+    nl: "Kopen"
+  };
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("fr-FR", {
@@ -40,9 +52,9 @@ export const ProductCard = ({ product }) => {
 
         <button
           onClick={goToStore}
-          className="w-full bg-[#FB7701] text-white py-2 rounded-lg font-bold hover:bg-orange-600"
+          className="w-full bg-[#FB7701] text-white py-2 rounded-lg font-bold hover:bg-orange-600 text-sm"
         >
-          Seç
+          {buttonLabels[language] || "Buy"}
         </button>
       </div>
     </div>
