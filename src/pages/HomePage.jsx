@@ -11,6 +11,8 @@ export default function HomePage() {
   const { language } = useLanguage();
   const platforms = ["aliexpress", "temu", "shein"];
 
+  const [activePlatform, setActivePlatform] = useState("aliexpress");
+
   const [data, setData] = useState({
     aliexpress: [],
     temu: [],
@@ -80,7 +82,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white">
 
-      {/* HERO — Küçültülmüş */}
+      {/* HERO */}
       <section className="bg-gradient-to-br from-[#FB7701] via-[#FF8C00] to-[#FFD700] py-8">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-white">
@@ -89,16 +91,53 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ================= MOBILE ================= */}
+      <div className="md:hidden">
 
-      {/* PLATFORM HEADER BAR */}
-     
+        {/* Platform Tabs */}
+        <div className="sticky top-0 z-40 bg-[#FB7701] text-white">
+          <div className="flex justify-around py-3 font-bold text-sm">
+            {platforms.map(platform => (
+              <button
+                key={platform}
+                onClick={() => setActivePlatform(platform)}
+                className={`px-4 py-2 rounded-full transition ${
+                  activePlatform === platform
+                    ? "bg-white text-[#FB7701]"
+                    : "opacity-80"
+                }`}
+              >
+                {platform.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
 
+        {/* Active Platform Products */}
+        <div className="px-4 py-6">
+          <div className="grid grid-cols-2 gap-3">
+            {data[activePlatform].map(product => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
 
-      {/* DESKTOP 3 KOLON */}
+          {loading[activePlatform] && (
+            <div className="text-center text-sm text-gray-400 py-4">
+              Loading...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ================= DESKTOP ================= */}
       <div className="hidden md:grid grid-cols-3 gap-6 max-w-7xl mx-auto px-4 py-6 h-[75vh]">
 
         {platforms.map(platform => (
           <div key={platform} className="bg-white rounded-xl shadow flex flex-col">
+
+            <div className="font-bold text-lg p-4 text-[#FB7701]">
+              {platform.toUpperCase()}
+            </div>
 
             <div
               ref={containers[platform]}
@@ -114,27 +153,6 @@ export default function HomePage() {
                   Loading...
                 </div>
               )}
-            </div>
-
-          </div>
-        ))}
-
-      </div>
-
-
-      {/* MOBILE — Horizontal Platform Switch */}
-      <div className="md:hidden px-4 py-6 space-y-6">
-
-        {platforms.map(platform => (
-          <div key={platform}>
-            <h2 className="font-bold text-lg mb-3 text-[#FB7701]">
-              {platform.toUpperCase()}
-            </h2>
-
-            <div className="grid grid-cols-2 gap-3">
-              {data[platform].slice(0, 2000).map(product => (
-                <ProductCard key={product.id} product={product} />
-              ))}
             </div>
 
           </div>
