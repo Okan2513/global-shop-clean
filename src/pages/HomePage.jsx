@@ -4,7 +4,7 @@ import { ProductCard } from "../components/ProductCard";
 import { useLanguage } from "../contexts/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
-const LIMIT = 500;
+const LIMIT = 2000;
 
 export default function HomePage() {
 
@@ -91,13 +91,7 @@ export default function HomePage() {
 
 
       {/* PLATFORM HEADER BAR */}
-      <div className="bg-[#FB7701] text-white">
-        <div className="max-w-7xl mx-auto grid grid-cols-3 text-center font-bold py-3">
-          <div>ALIEXPRESS</div>
-          <div>TEMU</div>
-          <div>SHEIN</div>
-        </div>
-      </div>
+     
 
 
       {/* DESKTOP 3 KOLON */}
