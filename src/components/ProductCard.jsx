@@ -5,7 +5,34 @@ export function ProductCard({ product }) {
 
   if (!product) return null;
 
-  const safePlatform = (product.platform || "").toLowerCase();
+  // BACKEND MAPPING (KRİTİK)
+  const title =
+    product.title ||
+    product.name ||
+    "No title";
+
+  const price =
+    product.price ||
+    product.price_value ||
+    product.priceValue ||
+    null;
+
+  const platform =
+    (product.platform ||
+      product.source ||
+      product.marketplace ||
+      "").toLowerCase();
+
+  const url =
+    product.url ||
+    product.link ||
+    "#";
+
+  const image =
+    product.image ||
+    product.image_url ||
+    product.img ||
+    "/placeholder.jpg";
 
   const buttonText = {
     en: "Buy Now",
@@ -23,43 +50,37 @@ export function ProductCard({ product }) {
     shein: "bg-black"
   };
 
-  const badgeColor = platformColors[safePlatform] || "bg-gray-500";
+  const badgeColor = platformColors[platform] || "bg-gray-500";
 
   return (
     <div className="bg-white rounded-xl shadow hover:shadow-lg transition flex flex-col">
 
-      {/* IMAGE */}
       <img
-        src={product.image || "/placeholder.jpg"}
-        alt={product.title || "Product"}
+        src={image}
+        alt={title}
         className="w-full h-48 object-cover rounded-t-xl"
       />
 
-      {/* CONTENT */}
       <div className="p-3 flex flex-col flex-grow">
 
-        {/* TITLE */}
         <h3 className="text-sm font-semibold line-clamp-2 mb-2">
-          {product.title || "No title"}
+          {title}
         </h3>
 
-        {/* PRICE */}
         <div className="text-lg font-bold text-[#FB7701] mb-3">
-          {product.price ? `${product.price} €` : "—"}
+          {price ? `${price} €` : "—"}
         </div>
 
-        {/* PLATFORM BADGE */}
         <div className="mb-3">
           <span
             className={`text-white text-xs px-3 py-1 rounded-full ${badgeColor}`}
           >
-            {safePlatform ? safePlatform.toUpperCase() : "UNKNOWN"}
+            {platform ? platform.toUpperCase() : "UNKNOWN"}
           </span>
         </div>
 
-        {/* BUTTON */}
         <a
-          href={product.url || "#"}
+          href={url}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-auto bg-[#FB7701] hover:bg-[#e66a00] text-white text-sm py-2 rounded-lg text-center font-semibold transition"
