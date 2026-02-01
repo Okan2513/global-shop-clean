@@ -329,3 +329,11 @@ async def save_settings(data: dict, Authorization: str = Header(None)):
 @app.get("/")
 async def root():
     return {"status": "ok"}
+    
+@app.get("/api/site-settings")
+async def get_site_settings():
+    settings = await settings_collection.find_one({})
+    if not settings:
+        return {}
+    settings["_id"] = str(settings["_id"])
+    return settings    
