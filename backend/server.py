@@ -214,7 +214,7 @@ async def import_products_csv(
 async def get_products(
     platform: Optional[str] = Query(None),
     skip: int = 0,
-    limit: int = 20
+    limit: int = 500
 ):
     query = {}
 
