@@ -6,8 +6,8 @@ from fastapi import Header
 from fastapi.responses import JSONResponse
 import base64
 
-ADMIN_USER = "globaladmin"
-ADMIN_PASS = "Gl0b4l$ecure2024!"
+ADMIN_USER = "Yusuf"
+ADMIN_PASS = "2012"
 
 def verify_admin(auth: str):
     if not auth or not auth.startswith("Basic "):
