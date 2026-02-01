@@ -1,38 +1,8 @@
 import { useLanguage } from "../contexts/LanguageContext";
 
 export function ProductCard({ product }) {
+
   const { language } = useLanguage();
-
-  if (!product) return null;
-
-  // BACKEND MAPPING (KRİTİK)
-  const title =
-    product.title ||
-    product.name ||
-    "No title";
-
-  const price =
-    product.price ||
-    product.price_value ||
-    product.priceValue ||
-    null;
-
-  const platform =
-    (product.platform ||
-      product.source ||
-      product.marketplace ||
-      "").toLowerCase();
-
-  const url =
-    product.url ||
-    product.link ||
-    "#";
-
-  const image =
-    product.image ||
-    product.image_url ||
-    product.img ||
-    "/placeholder.jpg";
 
   const buttonText = {
     en: "Buy Now",
@@ -44,41 +14,53 @@ export function ProductCard({ product }) {
     nl: "Kopen"
   };
 
+  // API prices array içinden ilk fiyatı al
+  const priceData = product.prices?.[0];
+
+  const platform = priceData?.platform || "unknown";
+  const price = priceData?.price ?? "-";
+  const url = priceData?.affiliate_url || "#";
+
   const platformColors = {
     aliexpress: "bg-red-500",
     temu: "bg-orange-500",
-    shein: "bg-black"
+    shein: "bg-black",
+    unknown: "bg-gray-400"
   };
-
-  const badgeColor = platformColors[platform] || "bg-gray-500";
 
   return (
     <div className="bg-white rounded-xl shadow hover:shadow-lg transition flex flex-col">
 
+      {/* IMAGE */}
       <img
-        src={image}
-        alt={title}
+        src={product.image}
+        alt={product.name}
         className="w-full h-48 object-cover rounded-t-xl"
       />
 
+      {/* CONTENT */}
       <div className="p-3 flex flex-col flex-grow">
 
+        {/* TITLE */}
         <h3 className="text-sm font-semibold line-clamp-2 mb-2">
-          {title}
+          {product.name || "No title"}
         </h3>
 
+        {/* PRICE */}
         <div className="text-lg font-bold text-[#FB7701] mb-3">
-          {price ? `${price} €` : "—"}
+          {price} €
         </div>
 
+        {/* PLATFORM BADGE */}
         <div className="mb-3">
           <span
-            className={`text-white text-xs px-3 py-1 rounded-full ${badgeColor}`}
+            className={`text-white text-xs px-3 py-1 rounded-full ${platformColors[platform]}`}
           >
-            {platform ? platform.toUpperCase() : "UNKNOWN"}
+            {platform.toUpperCase()}
           </span>
         </div>
 
+        {/* BUTTON */}
         <a
           href={url}
           target="_blank"
