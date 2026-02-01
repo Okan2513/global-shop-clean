@@ -57,7 +57,7 @@ export default function ProductsPage() {
     <div className="min-h-screen bg-[#F5F5F5]">
 
       {/* 🔥 PLATFORM TABS */}
-      <div className="sticky top-[120px] bg-[#FB7701] text-white z-40">
+      <div className="sticky top-[120px] bg-[#FB7701] text-white z-40 shadow-md">
         <div className="flex justify-around py-3 font-bold text-sm">
           {platforms.map(platform => (
             <button
