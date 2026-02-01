@@ -4,7 +4,7 @@ import { ProductCard } from "../components/ProductCard";
 import { useLanguage } from "../contexts/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
-const LIMIT = 20;
+const LIMIT = 500;
 
 export default function HomePage() {
 
