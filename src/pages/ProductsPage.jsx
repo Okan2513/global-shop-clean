@@ -3,7 +3,7 @@ import axios from "axios";
 import { ProductCard } from "../components/ProductCard";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || "https://global-shop-clean.onrender.com"}/api`;
-const LIMIT = 500;
+const LIMIT = 2000;
 
 export default function ProductsPage() {
   const platforms = ["aliexpress", "temu", "shein"];
