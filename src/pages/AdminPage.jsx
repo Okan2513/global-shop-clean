@@ -1,180 +1,70 @@
-import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import { Button } from '../components/ui/button';
-import { Skeleton } from '../components/ui/skeleton';
-import { useLanguage } from '../contexts/LanguageContext';
+# =========================
+# ADMIN AUTH
+# =========================
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+from fastapi import Header
+from fastapi.responses import JSONResponse
+import base64
 
-/* 🔐 ADMIN BASIC AUTH – KALICI ÇÖZÜM */
-const ADMIN_USER = "globaladmin";
-const ADMIN_PASS = "Gl0b4l$ecure2024!";
-const AUTH_HEADER = "Basic " + btoa(`${ADMIN_USER}:${ADMIN_PASS}`);
+ADMIN_USER = "globaladmin"
+ADMIN_PASS = "Gl0b4l$ecure2024!"
 
-/* Axios instance – bütün admin istekleri otomatik auth’lu gider */
-const adminApi = axios.create({
-  baseURL: API,
-  headers: {
-    "Authorization": AUTH_HEADER,
-    "Content-Type": "application/json"
-  }
-});
+def verify_admin(auth: str):
+    if not auth or not auth.startswith("Basic "):
+        return False
+    encoded = auth.split(" ")[1]
+    decoded = base64.b64decode(encoded).decode("utf-8")
+    return decoded == f"{ADMIN_USER}:{ADMIN_PASS}"
 
-export default function AdminPage() {
-  const { language } = useLanguage();
 
-  const [stats, setStats] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [loadingStats, setLoadingStats] = useState(true);
-  const [loadingSettings, setLoadingSettings] = useState(true);
+# =========================
+# ADMIN STATS
+# =========================
 
-  /* -------------------- FETCH FUNCTIONS -------------------- */
+@app.get("/api/admin/stats")
+async def admin_stats(Authorization: str = Header(None)):
+    if not verify_admin(Authorization):
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
-  const fetchStats = useCallback(async () => {
-    setLoadingStats(true);
-    try {
-      const res = await adminApi.get(`/admin/stats`);
-      setStats(res.data);
-    } catch (error) {
-      console.error('Failed to fetch stats:', error);
-    } finally {
-      setLoadingStats(false);
+    total_products = await collection.count_documents({})
+    pipeline = [
+        {"$group": {"_id": "$platform", "count": {"$sum": 1}}}
+    ]
+    result = collection.aggregate(pipeline)
+
+    products_by_platform = {}
+    async for r in result:
+        products_by_platform[r["_id"]] = r["count"]
+
+    return {
+        "total_products": total_products,
+        "products_by_platform": products_by_platform
     }
-  }, []);
 
-  const fetchSettings = useCallback(async () => {
-    setLoadingSettings(true);
-    try {
-      const res = await adminApi.get(`/admin/settings`);
-      setSettings(res.data);
-    } catch (error) {
-      console.error('Failed to fetch settings:', error);
-    } finally {
-      setLoadingSettings(false);
-    }
-  }, []);
 
-  /* -------------------- EFFECTS -------------------- */
+# =========================
+# ADMIN SETTINGS (BASIC)
+# =========================
 
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+settings_collection = db["settings"]
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+@app.get("/api/admin/settings")
+async def get_settings(Authorization: str = Header(None)):
+    if not verify_admin(Authorization):
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
-  /* -------------------- SAVE SETTINGS -------------------- */
+    settings = await settings_collection.find_one({})
+    if not settings:
+        return {}
+    settings["_id"] = str(settings["_id"])
+    return settings
 
-  const handleSave = async () => {
-    try {
-      await adminApi.post(`/admin/settings`, settings);
-      alert(language === 'tr' ? 'Ayarlar kaydedildi' : 'Settings saved');
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      alert(language === 'tr' ? 'Kaydedilemedi' : 'Save failed');
-    }
-  };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold mb-8">
-        {language === 'tr' ? 'Yönetim Paneli' : 'Admin Panel'}
-      </h1>
+@app.post("/api/admin/settings")
+async def save_settings(data: dict, Authorization: str = Header(None)):
+    if not verify_admin(Authorization):
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
-      {/* STATS */}
-      <section className="mb-12">
-        <h2 className="text-xl font-semibold mb-4">
-          {language === 'tr' ? 'İstatistikler' : 'Statistics'}
-        </h2>
-
-        {loadingStats ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
-            ))}
-          </div>
-        ) : stats ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Products" value={stats.total_products} />
-            <StatCard label="Categories" value={Object.keys(stats.products_by_platform || {}).length} />
-            <StatCard label="Platforms" value={Object.keys(stats.products_by_platform || {}).length} />
-            <StatCard label="Users" value={0} />
-          </div>
-        ) : (
-          <p className="text-gray-500">
-            {language === 'tr'
-              ? 'İstatistik bulunamadı.'
-              : 'No stats available.'}
-          </p>
-        )}
-      </section>
-
-      {/* SETTINGS */}
-      <section>
-        <h2 className="text-xl font-semibold mb-4">
-          {language === 'tr' ? 'Ayarlar' : 'Settings'}
-        </h2>
-
-        {loadingSettings ? (
-          <Skeleton className="h-32 rounded-xl" />
-        ) : settings ? (
-          <div className="bg-white rounded-xl shadow p-6 space-y-4">
-            <SettingRow
-              label="AliExpress API Key"
-              value={settings.aliexpress_app_key}
-              onChange={(v) =>
-                setSettings((s) => ({ ...s, aliexpress_app_key: v }))
-              }
-            />
-            <SettingRow
-              label="AliExpress Secret"
-              value={settings.aliexpress_app_secret}
-              onChange={(v) =>
-                setSettings((s) => ({ ...s, aliexpress_app_secret: v }))
-              }
-            />
-
-            <Button
-              onClick={handleSave}
-              className="bg-[#FB7701] hover:bg-[#E66A00] rounded-full px-8"
-            >
-              {language === 'tr' ? 'Kaydet' : 'Save'}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-gray-500">
-            {language === 'tr'
-              ? 'Ayarlar bulunamadı.'
-              : 'No settings found.'}
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}
-
-/* -------------------- HELPERS -------------------- */
-
-function StatCard({ label, value }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-4 text-center">
-      <p className="text-gray-500 text-sm">{label}</p>
-      <p className="text-2xl font-bold">{value ?? 0}</p>
-    </div>
-  );
-}
-
-function SettingRow({ label, value, onChange }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm text-gray-500">{label}</label>
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FB7701]"
-      />
-    </div>
-  );
-}
+    await settings_collection.delete_many({})
+    await settings_collection.insert_one(data)
+    return {"success": True}
