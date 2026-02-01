@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Menu, X, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useLanguage } from '@/contexts/LanguageContext';
+} from '../components/ui/dropdown-menu';
+import { useLanguage } from '../contexts/LanguageContext';
 import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
